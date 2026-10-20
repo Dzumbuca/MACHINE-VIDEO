@@ -226,7 +226,7 @@ test('tipo desconhecido num socket autenticado responde E_UNKNOWN_TYPE sem fecha
   const cliente = await abrirCliente();
   await autenticar(cliente, tokenAna);
 
-  cliente.enviar({ type: 'chat_send', text: 'olá' }); // chega na Task 6; hoje é desconhecido
+  cliente.enviar({ type: 'tipo_do_futuro' }); // chat_send passou a ser tratado pela Task 6
   const primeiro = await esperarNovaMensagem(cliente, (m) => m.type === 'error');
   assert.deepStrictEqual(primeiro, { type: 'error', code: 'E_UNKNOWN_TYPE' });
 

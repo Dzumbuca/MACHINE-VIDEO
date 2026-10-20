@@ -2,6 +2,7 @@
 
 const { utilizadorPublico } = require('./http-util');
 const { criarPresenca } = require('./presence');
+const { createChatHandlers } = require('./chat');
 
 /**
  * Hub WebSocket — Machine Video Social (Task 5).
@@ -9,8 +10,7 @@ const { criarPresenca } = require('./presence');
  * Máquina de estados por ligação:
  *   ligada → "à espera de auth" (fecha após 5 s sem auth) → "autenticada" → fechada
  *
- * Envelopes JSON, com os tipos exatos do enunciado (as Tasks 6–8 acrescentam
- * os tipos de chat, chamada e sessão; hoje tudo o resto é desconhecido):
+ * Envelopes JSON, com os tipos exatos do enunciado:
  *   C→S {type:"auth", token}
  *     → S→C {type:"auth_ok", user:{id,username}}      token válido
  *     → ligação fechada, sem resposta                 token mau/inexistente
@@ -19,6 +19,8 @@ const { criarPresenca } = require('./presence');
  *                                                     na última (offline)
  *   frame não-JSON → S→C {type:"error", code:"E_BADJSON"}
  *       socket autenticado mantém-se vivo; socket sem auth é fechado em seguida
+ *   pós-auth: os tipos registados pelas tarefas seguintes são tratados por
+ *       handlers próprios (Task 6: chat — src/chat.js); Tasks 7–8 chegam depois
  *   tipo desconhecido (autenticado) → {type:"error", code:"E_UNKNOWN_TYPE"},
  *       sem fechar (Review Focus: os tipos novos chegam nas Tasks 6–8)
  *   outro tipo antes de autenticar → ligação fechada (Review Focus 2)
@@ -60,6 +62,10 @@ function criarHub({ store, wss, authTimeoutMs = TEMPO_LIMITE_AUTH_MS_PADRAO }) {
       enviarPara(destino, envelope);
     }
   }
+
+  // Handlers pós-auth registados pelas tarefas seguintes. Task 6: o chat
+  // reutiliza enviarDireto/enviarPara (best-effort, readyState + try/catch).
+  const chat = createChatHandlers({ store, enviarDireto, enviarPara });
 
   /** Fecha com o handshake de fecho; nunca lança se já estiver a fechar. */
   function fechar(ws) {
@@ -126,9 +132,20 @@ function criarHub({ store, wss, authTimeoutMs = TEMPO_LIMITE_AUTH_MS_PADRAO }) {
         return;
       }
 
-      // Autenticado: nesta tarefa não há mais tipos tratados — nem 'auth'
-      // (sem re-autenticação). Responder com erro SEM fechar.
-      enviarDireto(ws, { type: 'error', code: 'E_UNKNOWN_TYPE' });
+      // Autenticado: os tipos registados pelas tarefas seguintes são tratados
+      // pelos handlers próprios (Task 6: chat). O resto é desconhecido —
+      // responde com erro SEM fechar ('auth' nunca re-autentica).
+      let tratado = false;
+      try {
+        tratado = chat.handleEnvelope(envelope, estado.user, ws);
+      } catch {
+        // O handler não devia lançar; se lançar, o processo não pode morrer.
+        tratado = true;
+        enviarDireto(ws, { type: 'error', code: 'E_INTERNAL' });
+      }
+      if (!tratado) {
+        enviarDireto(ws, { type: 'error', code: 'E_UNKNOWN_TYPE' });
+      }
     });
   });
 

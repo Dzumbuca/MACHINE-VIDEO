@@ -5,6 +5,7 @@ const path = require('node:path');
 
 const { createAuthHandlers } = require('./auth');
 const { createFriendsHandlers } = require('./friends');
+const { createChatHandlers } = require('./chat');
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -21,6 +22,7 @@ function sendJson(res, status, body) {
 function createRouter({ store, publicDir }) {
   const auth = createAuthHandlers({ store });
   const friends = createFriendsHandlers({ store });
+  const chat = createChatHandlers({ store });
 
   // Despacho async com rede de segurança: um pedido abortado não pode
   // derrubar o processo (o handler sync anterior era protegido pelo Node).
@@ -51,6 +53,15 @@ function createRouter({ store, publicDir }) {
     const rotaAmigos = friends.match(req.method, pathname);
     if (rotaAmigos) {
       const { status, body } = await rotaAmigos(req);
+      sendJson(res, status, body);
+      return;
+    }
+
+    // Rotas REST do chat (Task 6): conversas e histórico de mensagens —
+    // ver src/chat.js.
+    const rotaChat = chat.match(req.method, pathname);
+    if (rotaChat) {
+      const { status, body } = await rotaChat(req);
       sendJson(res, status, body);
       return;
     }
