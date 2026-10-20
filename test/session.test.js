@@ -57,11 +57,7 @@ function abrirCliente() {
   return new Promise((resolve) => {
     const ws = new WebSocket(urlWs);
     const cliente = {
-      ws,
-      mensagens: [],
-      fechado: null,
-      esperas: [],
-      esperasFecho: [],
+      ws, mensagens: [], fechado: null, esperas: [], esperasFecho: [],
       enviar(pacote) {
         ws.send(typeof pacote === 'string' ? pacote : JSON.stringify(pacote));
       },
@@ -134,16 +130,14 @@ const mensagensDe = (cliente, filtro) => cliente.mensagens.filter(filtro);
 async function erroDe(cliente, code) {
   const erro = await esperarNovaMensagem(cliente, (m) => m.type === 'error');
   assert.deepStrictEqual(erro, { type: 'error', code });
-  return erro;
 }
 
 /** Cria uma sessão da ana convidando o bruno e devolve o convite recebido. */
 async function criarSessao(anaCli, brunoCli, opcoes = {}) {
   const promessa = esperarNovaMensagem(brunoCli, (m) => m.type === 'session_invite');
   anaCli.enviar({
-    type: 'session_create', title: opcoes.title ?? 'Filme de Sexta',
-    fileName: opcoes.fileName ?? 'filme.mp4', durationSec: opcoes.durationSec ?? 5400,
-    toUserIds: [bruno.id],
+    type: 'session_create', title: opcoes.title ?? 'Filme de Sexta', fileName: opcoes.fileName ?? 'filme.mp4',
+    durationSec: opcoes.durationSec ?? 5400, toUserIds: [bruno.id],
   });
   return promessa;
 }
@@ -155,7 +149,7 @@ async function juntarBruno(brunoCli, sessionId, fileMatches) {
   return promessa;
 }
 
-// --- 1. session_create → session_invite -----------------------------------------
+// --- 1. session_create → session_invite + session_created (R9) ------------------
 
 test('session_create envia session_invite ao convidado com os campos exatos do brief (R2: 1 convidado chega)', async () => {
   const brunoCli = await clienteAutenticado(bruno);
@@ -171,15 +165,13 @@ test('session_create envia session_invite ao convidado com os campos exatos do b
     title: 'Filme de Sexta', fileName: 'filme.mp4', durationSec: 5400,
   });
 
-  // A anfitriã NÃO recebe o convite ("aos convidados") nem resposta definida.
+  // A anfitriã não recebe convite ("aos convidados"); o ack dela é o session_created (R9).
   await dormir(250);
   assert.deepStrictEqual(mensagensDe(anaCli, (m) => m.type === 'session_invite'), []);
 
   // Destino repetido → um único convite (dedup, como no relay da Task 7).
-  const promessaDup = esperarNovaMensagem(
-    brunoCli,
-    (m) => m.type === 'session_invite' && m.fileName === 'filme-dup.mp4',
-  );
+  const promessaDup = esperarNovaMensagem(brunoCli,
+    (m) => m.type === 'session_invite' && m.fileName === 'filme-dup.mp4');
   anaCli.enviar({
     type: 'session_create', title: 'Dup', fileName: 'filme-dup.mp4',
     durationSec: 60, toUserIds: [bruno.id, bruno.id],
@@ -188,9 +180,36 @@ test('session_create envia session_invite ao convidado com os campos exatos do b
   await dormir(150);
   assert.strictEqual(
     mensagensDe(brunoCli, (m) => m.type === 'session_invite' && m.fileName === 'filme-dup.mp4').length,
-    1,
-    'destino repetido recebe um único convite',
+    1, 'destino repetido recebe um único convite',
   );
+
+  await Promise.all([fecharCliente(anaCli), fecharCliente(brunoCli)]);
+});
+
+test('session_create responde session_created ao anfitrião (R9) com o sessionId do convite', async () => {
+  const brunoCli = await clienteAutenticado(bruno);
+  const anaCli = await clienteAutenticado(ana);
+
+  // Promessas registadas ANTES do envio: ack do anfitrião e convite do convidado.
+  const promessaAck = esperarNovaMensagem(anaCli, (m) => m.type === 'session_created');
+  const convite = await criarSessao(anaCli, brunoCli);
+  const ack = await promessaAck;
+
+  assert.strictEqual(ack.sessionId, convite.sessionId, 'o mesmo sessionId que chega ao convidado');
+  assert.deepStrictEqual(Object.keys(ack).sort(),
+    ['durationSec', 'fileName', 'sessionId', 'title', 'type'], 'campos exatos do R9');
+  assert.deepStrictEqual({ ...ack, sessionId: '<id>' }, {
+    type: 'session_created', sessionId: '<id>',
+    title: 'Filme de Sexta', fileName: 'filme.mp4', durationSec: 5400,
+  });
+
+  // Prova fim-a-fim: com o sessionId do ack, o controlo do anfitrião é aceite.
+  const noBruno = esperarNovaMensagem(brunoCli, (m) => m.type === 'session_control');
+  anaCli.enviar({
+    type: 'session_control', sessionId: ack.sessionId,
+    action: 'play', positionSec: 7, atMs: 42,
+  });
+  assert.strictEqual((await noBruno).positionSec, 7);
 
   await Promise.all([fecharCliente(anaCli), fecharCliente(brunoCli)]);
 });
@@ -228,8 +247,7 @@ test('session_control da anfitriã chega a todos os membros com os campos exatos
   const noBruno = esperarNovaMensagem(brunoCli, (m) => m.type === 'session_control');
   const naAna = esperarNovaMensagem(anaCli, (m) => m.type === 'session_control');
   anaCli.enviar({
-    type: 'session_control', sessionId: convite.sessionId,
-    action: 'play', positionSec: 12, atMs: 345,
+    type: 'session_control', sessionId: convite.sessionId, action: 'play', positionSec: 12, atMs: 345,
   });
   const controleBruno = await noBruno;
   assert.deepStrictEqual(controleBruno, {
@@ -245,8 +263,7 @@ test('session_control da anfitriã chega a todos os membros com os campos exatos
   const noBruno2 = esperarNovaMensagem(brunoCli, (m) => m.type === 'session_control');
   const naAna2 = esperarNovaMensagem(anaCli, (m) => m.type === 'session_control');
   anaCli.enviar({
-    type: 'session_control', sessionId: convite.sessionId,
-    action: 'seek', positionSec: 90, atMs: 678,
+    type: 'session_control', sessionId: convite.sessionId, action: 'seek', positionSec: 90, atMs: 678,
   });
   assert.strictEqual((await noBruno2).action, 'seek');
   assert.strictEqual((await naAna2).action, 'seek');
@@ -261,8 +278,7 @@ test('session_control de membro não-anfitriã → E_NOT_HOST e NADA é difundid
   await juntarBruno(brunoCli, convite.sessionId, true);
 
   brunoCli.enviar({
-    type: 'session_control', sessionId: convite.sessionId,
-    action: 'pause', positionSec: 5, atMs: 1,
+    type: 'session_control', sessionId: convite.sessionId, action: 'pause', positionSec: 5, atMs: 1,
   });
   await erroDe(brunoCli, 'E_NOT_HOST');
 
@@ -272,8 +288,7 @@ test('session_control de membro não-anfitriã → E_NOT_HOST e NADA é difundid
 
   // A ligação mantém-se viva: um segundo envio também é respondido.
   brunoCli.enviar({
-    type: 'session_control', sessionId: convite.sessionId,
-    action: 'play', positionSec: 0, atMs: 0,
+    type: 'session_control', sessionId: convite.sessionId, action: 'play', positionSec: 0, atMs: 0,
   });
   await erroDe(brunoCli, 'E_NOT_HOST');
 
@@ -297,11 +312,9 @@ test('não-membro → E_FORBIDDEN (join e control); sessão desconhecida → E_N
   evaCli.enviar({ type: 'session_join', sessionId: convite.sessionId, fileMatches: true });
   await erroDe(evaCli, 'E_FORBIDDEN');
   // ...e control → E_FORBIDDEN: o gate de membresia vem antes do gate de
-  // anfitriã ("não-membro → E_FORBIDDEN" vale para join/controlar/receber;
-  // E_NOT_HOST distingue só o membro comum — decisão documentada no módulo).
+  // anfitriã (não-membro → E_FORBIDDEN vale para join/controlar/receber).
   evaCli.enviar({
-    type: 'session_control', sessionId: convite.sessionId,
-    action: 'play', positionSec: 0, atMs: 0,
+    type: 'session_control', sessionId: convite.sessionId, action: 'play', positionSec: 0, atMs: 0,
   });
   await erroDe(evaCli, 'E_FORBIDDEN');
 
@@ -309,8 +322,7 @@ test('não-membro → E_FORBIDDEN (join e control); sessão desconhecida → E_N
   brunoCli.enviar({ type: 'session_join', sessionId: 'sessao-inexistente', fileMatches: true });
   await erroDe(brunoCli, 'E_NOTFOUND');
   brunoCli.enviar({
-    type: 'session_control', sessionId: 'sessao-inexistente',
-    action: 'play', positionSec: 0, atMs: 0,
+    type: 'session_control', sessionId: 'sessao-inexistente', action: 'play', positionSec: 0, atMs: 0,
   });
   await erroDe(brunoCli, 'E_NOTFOUND');
 
@@ -356,21 +368,18 @@ test('convidado que sai é removido em silêncio; a sessão continua e ele não 
   assert.deepStrictEqual(mensagensDe(brunoCli, (m) => m.type === 'error'), [], 'saída sem erro');
   assert.deepStrictEqual(mensagensDe(anaCli, (m) => m.type === 'session_ended'), [], 'a sessão NÃO acaba');
   assert.strictEqual(
-    mensagensDe(anaCli, (m) => m.type === 'session_member').length,
-    1,
+    mensagensDe(anaCli, (m) => m.type === 'session_member').length, 1,
     'nenhum anúncio novo além do join (o brief não define member_left)',
   );
 
-  // Deixou de ser membro: join de volta → E_FORBIDDEN (v1: só membros podem
-  // join; o estado prescrito não guarda lista separada de convidados).
+  // Deixou de ser membro: join de volta → E_FORBIDDEN (v1: só membros podem join).
   brunoCli.enviar({ type: 'session_join', sessionId: convite.sessionId, fileMatches: true });
   await erroDe(brunoCli, 'E_FORBIDDEN');
 
   // E deixa de receber os controles do anfitrião.
   const naAna = esperarNovaMensagem(anaCli, (m) => m.type === 'session_control');
   anaCli.enviar({
-    type: 'session_control', sessionId: convite.sessionId,
-    action: 'pause', positionSec: 0, atMs: 0,
+    type: 'session_control', sessionId: convite.sessionId, action: 'pause', positionSec: 0, atMs: 0,
   });
   await naAna;
   await dormir(150);
@@ -392,8 +401,7 @@ test('session_join com fileMatches:false entra em modo só-conversa e continua a
   // O membro sem-ficheiro CONTINUA a receber os controles do anfitrião.
   const controle = esperarNovaMensagem(brunoCli, (m) => m.type === 'session_control');
   anaCli.enviar({
-    type: 'session_control', sessionId: convite.sessionId,
-    action: 'play', positionSec: 0, atMs: 0,
+    type: 'session_control', sessionId: convite.sessionId, action: 'play', positionSec: 0, atMs: 0,
   });
   assert.strictEqual((await controle).action, 'play', 'o cliente sem ficheiro decide o que fazer');
 
@@ -407,28 +415,24 @@ test('dup join do mesmo membro é idempotente: atualiza fileMatches, sem duplica
 
   assert.strictEqual((await juntarBruno(brunoCli, convite.sessionId, true)).fileMatches, true);
   assert.strictEqual(
-    (await juntarBruno(brunoCli, convite.sessionId, false)).fileMatches,
-    false,
+    (await juntarBruno(brunoCli, convite.sessionId, false)).fileMatches, false,
     'o segundo join ATUALIZA o estado do membro',
   );
   await dormir(150);
   assert.strictEqual(
-    mensagensDe(brunoCli, (m) => m.type === 'session_member').length,
-    2,
+    mensagensDe(brunoCli, (m) => m.type === 'session_member').length, 2,
     'um anúncio por join — sem entradas duplicadas',
   );
 
   // Sem duplicação na lista de membros: um controlo chega UMA vez ao membro.
   const controle = esperarNovaMensagem(brunoCli, (m) => m.type === 'session_control');
   anaCli.enviar({
-    type: 'session_control', sessionId: convite.sessionId,
-    action: 'seek', positionSec: 30, atMs: 9,
+    type: 'session_control', sessionId: convite.sessionId, action: 'seek', positionSec: 30, atMs: 9,
   });
   await controle;
   await dormir(150);
   assert.strictEqual(
-    mensagensDe(brunoCli, (m) => m.type === 'session_control').length,
-    1,
+    mensagensDe(brunoCli, (m) => m.type === 'session_control').length, 1,
     'o membro continua único na lista (entrega única)',
   );
 
@@ -470,8 +474,7 @@ test('campos obrigatórios malformados → E_INVALID; destino mau falha a criaç
     'os erros seguem a ordem e o código previstos',
   );
 
-  // Um destino mau falha o pedido INTEIRO: sem sessão criada, sem convite
-  // parcial (mesma regra de avaliar-antes-de-entregar do relay da Task 7).
+  // Um destino mau falha o pedido INTEIRO: sem sessão criada, sem convite parcial (regra da T7).
   anaCli.enviar({
     type: 'session_create', title: 't', fileName: 'parcial.mp4',
     durationSec: 60, toUserIds: [bruno.id, eva.id],
@@ -480,8 +483,7 @@ test('campos obrigatórios malformados → E_INVALID; destino mau falha a criaç
   await dormir(150);
   assert.deepStrictEqual(
     mensagensDe(brunoCli, (m) => m.type === 'session_invite' && m.fileName === 'parcial.mp4'),
-    [],
-    'o convidado válido NÃO recebe convite quando outro destino falha',
+    [], 'o convidado válido NÃO recebe convite quando outro destino falha',
   );
 
   await Promise.all([fecharCliente(anaCli), fecharCliente(brunoCli), fecharCliente(evaCli)]);

@@ -33,7 +33,11 @@ const crypto = require('node:crypto');
  *        sessão e de entregar (desconhecido → E_NOTFOUND; não-amigo →
  *        E_FORBIDDEN; um destino mau falha o pedido inteiro, sem convite
  *        parcial). Convidado offline fica sem entrega e sem erro
- *        (best-effort, sem fila de convites na v1).
+ *        (best-effort, sem fila de convites na v1). O ANFITRIÃO recebe ainda
+ *        {type:"session_created", sessionId, title, fileName, durationSec}
+ *        (R9 do controller — aditivo ao brief, precedido do call_ack da
+ *        Task 7): é assim que a cliente anfitriã fica a saber o sessionId
+ *        para poder enviar session_control.
  *   C→S {type:"session_join", sessionId, fileMatches:bool}
  *     → {type:"session_member", sessionId, userId, username, fileMatches} a
  *       TODOS os membros — o próprio incluído (uma entrega, como no eco do
@@ -70,10 +74,10 @@ const crypto = require('node:crypto');
  *   - membership NÃO depende de sockets (v1): um membro que fecha a ligação
  *     continua membro; a entrega é sempre best-effort (enviarPara/
  *     enviarDireto com readyState + try/catch);
- *   - a anfitriã NÃO recebe resposta ao session_create — o brief define
- *     apenas o convite aos convidados; a v1 segue o brief à letra (limitação
- *     conhecida: a cliente anfitriã descobre o sessionId pelo anúncio do
- *     membro/controlo ou por um futuro ack do controller);
+ *   - o ANFITRIÃO recebe {type:"session_created", sessionId, title,
+ *     fileName, durationSec} no sucesso do create (R9 do controller;
+ *     aditivo ao brief, mesmo precedente do call_ack da Task 7) — sem ele a
+ *     cliente anfitriã não conseguiria enviar session_control;
  *   - validação na fronteira: title/fileName strings, durationSec/positionSec/
  *     atMs números finitos, fileMatches booleano.
  */
@@ -186,7 +190,8 @@ function createSessionHandlers({ store, enviarDireto, enviarPara }) {
     for (const convidado of convidados) {
       enviarPara(convidado, convite); // best-effort: offline fica sem convite
     }
-    // O brief não define resposta à anfitriã (ver nota no cabeçalho).
+    // R9: ack ao ANFITRIÃO — o mesmo id gerado, para poder controlar a sessão.
+    enviarDireto(ws, { type: 'session_created', sessionId, title, fileName, durationSec });
   }
 
   // --- session_join -----------------------------------------------------------
