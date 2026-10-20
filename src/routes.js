@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { createAuthHandlers } = require('./auth');
+const { createFriendsHandlers } = require('./friends');
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -19,6 +20,7 @@ function sendJson(res, status, body) {
 
 function createRouter({ store, publicDir }) {
   const auth = createAuthHandlers({ store });
+  const friends = createFriendsHandlers({ store });
 
   // Despacho async com rede de segurança: um pedido abortado não pode
   // derrubar o processo (o handler sync anterior era protegido pelo Node).
@@ -40,6 +42,15 @@ function createRouter({ store, publicDir }) {
     const rotaAuth = auth.match(req.method, pathname);
     if (rotaAuth) {
       const { status, body } = await rotaAuth(req);
+      sendJson(res, status, body);
+      return;
+    }
+
+    // Rotas REST de amizades (Task 4): GET /api/friends,
+    // POST /api/friends/request e /api/friends/accept — ver src/friends.js.
+    const rotaAmigos = friends.match(req.method, pathname);
+    if (rotaAmigos) {
+      const { status, body } = await rotaAmigos(req);
       sendJson(res, status, body);
       return;
     }
