@@ -1,6 +1,13 @@
 'use strict';
 
 const { StoreError } = require('./store');
+const {
+  exigirSessao,
+  falha,
+  lerCorpoJson,
+  match: matchHandler,
+  utilizadorPublico,
+} = require('./http-util');
 
 /**
  * Amizades — Machine Video Social (Task 4).
@@ -33,8 +40,6 @@ const { StoreError } = require('./store');
  * resposta. Erros previstos via HttpError são convertidos em { ok:false }.
  */
 
-const MAX_BODY_BYTES = 64 * 1024;
-
 /** Mapeamento dos códigos do StoreError para status HTTP. */
 const STATUS_POR_CODIGO = {
   E_SELF: 400,
@@ -42,60 +47,6 @@ const STATUS_POR_CODIGO = {
   E_NOTFOUND: 404,
   E_FORBIDDEN: 403,
 };
-
-class HttpError extends Error {
-  /**
-   * @param {number} status - código HTTP a devolver
-   * @param {string} message - mensagem user-facing em português
-   */
-  constructor(status, message) {
-    super(message);
-    this.status = status;
-  }
-}
-
-function falha(status, message) {
-  throw new HttpError(status, message);
-}
-
-/** Lê e faz parse do corpo JSON, com limite de tamanho. */
-function lerCorpoJson(req) {
-  return new Promise((resolve, reject) => {
-    const pedacos = [];
-    let bytes = 0;
-    let demasiadoGrande = false;
-    req.on('data', (pedaco) => {
-      bytes += pedaco.length;
-      if (bytes > MAX_BODY_BYTES) {
-        demasiadoGrande = true; // continua a consumir para não pendurar a ligação
-      } else {
-        pedacos.push(pedaco);
-      }
-    });
-    req.on('end', () => {
-      if (demasiadoGrande) {
-        reject(new HttpError(400, 'Pedido demasiado grande'));
-        return;
-      }
-      const bruto = Buffer.concat(pedacos).toString('utf8');
-      if (bruto.length === 0) {
-        reject(new HttpError(400, 'Corpo JSON em falta'));
-        return;
-      }
-      try {
-        resolve(JSON.parse(bruto));
-      } catch {
-        reject(new HttpError(400, 'JSON inválido'));
-      }
-    });
-    req.on('error', reject);
-  });
-}
-
-/** Projeta o user da store para o formato público (sem passHash/secA). */
-function utilizadorPublico(user) {
-  return { id: user.id, username: user.username };
-}
 
 /** Converte um StoreError previsto no respetivo HttpError; o resto passa. */
 function traduzErroStore(err) {
@@ -109,18 +60,8 @@ function createFriendsHandlers({ store }) {
   /** @type {Map<string, object>} requestId -> pedido (só os ainda pendentes) */
   const pedidosPendentes = new Map();
 
-  function exigirSessao(req) {
-    const header = req.headers.authorization || '';
-    const correspondencia = /^Bearer\s+(.+)$/i.exec(header);
-    if (!correspondencia) falha(401, 'Sessão em falta ou inválida');
-    const token = correspondencia[1].trim();
-    const user = store.getUserByToken(token);
-    if (!user) falha(401, 'Sessão em falta ou inválida');
-    return { token, user };
-  }
-
   async function pedirAmizade(req) {
-    const { user: eu } = exigirSessao(req);
+    const { user: eu } = exigirSessao(req, store);
     const corpo = await lerCorpoJson(req);
     const alvo = store.getUserByUsername(corpo.username);
     if (!alvo) falha(404, 'Utilizador não encontrado');
@@ -135,7 +76,7 @@ function createFriendsHandlers({ store }) {
   }
 
   async function aceitarAmizade(req) {
-    const { user: eu } = exigirSessao(req);
+    const { user: eu } = exigirSessao(req, store);
     const corpo = await lerCorpoJson(req);
     let atualizado;
     try {
@@ -148,7 +89,7 @@ function createFriendsHandlers({ store }) {
   }
 
   function listar(req) {
-    const { user: eu } = exigirSessao(req);
+    const { user: eu } = exigirSessao(req, store);
     const friends = store.listFriends(eu.id).map(utilizadorPublico);
     const pendentes = [...pedidosPendentes.values()];
     const pendingIn = pendentes
@@ -176,21 +117,13 @@ function createFriendsHandlers({ store }) {
 
   /**
    * Devolve o handler da rota pedida ou null. O handler devolvido nunca
-   * lança: converte HttpError em { status, body } e o inesperado em 500.
+   * lança: o wrapper partilhado (src/http-util.js) converte HttpError em
+   * { status, body } e o inesperado em 500.
    */
   function match(method, pathname) {
     const handler = ROTAS[`${method} ${pathname}`];
     if (!handler) return null;
-    return async (req) => {
-      try {
-        return await handler(req);
-      } catch (err) {
-        if (err instanceof HttpError) {
-          return { status: err.status, body: { ok: false, erro: err.message } };
-        }
-        return { status: 500, body: { ok: false, erro: 'Erro interno' } };
-      }
-    };
+    return matchHandler(handler);
   }
 
   return { match };
