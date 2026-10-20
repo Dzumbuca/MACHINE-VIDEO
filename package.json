@@ -1,0 +1,17 @@
+{
+  "name": "machine-video",
+  "version": "0.1.0",
+  "description": "Machine Video - servidor HTTP e cliente estatico (em construcao)",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
+  "license": "UNLICENSED",
+  "private": true,
+  "type": "commonjs",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "ws": "^8.22.0"
+  }
+}
