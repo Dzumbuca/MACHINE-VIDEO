@@ -67,6 +67,13 @@ function createStoreMemory() {
     return user ? { ...user } : null;
   }
 
+  // Método aditivo (Task 3 — recuperação): substitui o passHash guardado.
+  function updateUserPassword(userId, passHash) {
+    const user = exigeUser(userId);
+    user.passHash = passHash;
+    return { ...user };
+  }
+
   // --- sessões ---------------------------------------------------------------
 
   function createSession(userId) {
@@ -226,6 +233,7 @@ function createStoreMemory() {
     createUser,
     getUserByUsername,
     getUserById,
+    updateUserPassword,
     // sessões
     createSession,
     getUserByToken,

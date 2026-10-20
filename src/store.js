@@ -15,6 +15,8 @@
  *   createUser({ username, passHash, secQ, secA }) → user
  *   getUserByUsername(username)                    → user | null
  *   getUserById(id)                                → user | null
+ *   updateUserPassword(userId, newPassHash)        → user (aditivo, Task 3:
+ *                recuperação de senha; E_NOTFOUND se o userId não existir)
  *   createSession(userId)                          → token (string opaca)
  *   getUserByToken(token)                          → user | null
  *   deleteSession(token)                           → undefined (idempotente)

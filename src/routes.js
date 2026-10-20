@@ -3,6 +3,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
+const { createAuthHandlers } = require('./auth');
+
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -16,22 +18,38 @@ function sendJson(res, status, body) {
 }
 
 function createRouter({ store, publicDir }) {
-  // `store` fica disponível para as rotas de API das próximas tarefas.
+  const auth = createAuthHandlers({ store });
+
+  // Despacho async com rede de segurança: um pedido abortado não pode
+  // derrubar o processo (o handler sync anterior era protegido pelo Node).
   return function handle(req, res) {
+    processar(req, res).catch(() => res.destroy());
+  };
+
+  async function processar(req, res) {
+    let pathname;
+    try {
+      pathname = new URL(req.url, 'http://localhost').pathname;
+    } catch {
+      sendJson(res, 400, { ok: false, erro: 'Pedido inválido' });
+      return;
+    }
+
+    // Rotas REST de autenticação (Task 3): POST register/login/logout/recover
+    // e GET me — ver src/auth.js.
+    const rotaAuth = auth.match(req.method, pathname);
+    if (rotaAuth) {
+      const { status, body } = await rotaAuth(req);
+      sendJson(res, status, body);
+      return;
+    }
+
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       res.writeHead(405, {
         'Content-Type': 'application/json; charset=utf-8',
         Allow: 'GET, HEAD',
       });
       res.end(JSON.stringify({ ok: false, erro: 'Método não permitido' }));
-      return;
-    }
-
-    let pathname;
-    try {
-      pathname = new URL(req.url, 'http://localhost').pathname;
-    } catch {
-      sendJson(res, 400, { ok: false, erro: 'Pedido inválido' });
       return;
     }
 
@@ -72,7 +90,7 @@ function createRouter({ store, publicDir }) {
       res.writeHead(200, { 'Content-Type': type });
       res.end(data);
     });
-  };
+  }
 }
 
 module.exports = { createRouter };

@@ -90,6 +90,17 @@ test('users: procura por username (exata) e por id; inexistente devolve null', (
   assert.strictEqual(store.getUserById('inexistente'), null);
 });
 
+test('updateUserPassword altera o passHash (aditivo da Task 3: recuperação)', () => {
+  const store = createStoreMemory();
+  const alice = criaUser(store, 'alice');
+
+  const atualizado = store.updateUserPassword(alice.id, 'novo-hash');
+  assert.strictEqual(atualizado.id, alice.id);
+  assert.strictEqual(store.getUserById(alice.id).passHash, 'novo-hash');
+
+  erroDeCodigo(() => store.updateUserPassword('inexistente', 'outro'), 'E_NOTFOUND');
+});
+
 test('sessões: token válido, eliminado e inexistente', () => {
   const store = createStoreMemory();
   const alice = criaUser(store, 'alice');
