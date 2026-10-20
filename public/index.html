@@ -3,13 +3,181 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0b0d12" />
     <title>Machine Video</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect x='3' y='3' width='42' height='42' rx='12' fill='%23ff7a1a'/%3E%3Cpath d='M19 15.5v17l14-8.5z' fill='%23141008'/%3E%3C/svg%3E"
+    />
     <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/ui/shell.css" />
+    <link rel="stylesheet" href="/ui/chat.css" />
   </head>
   <body>
-    <main>
-      <h1>Machine Video</h1>
-      <p>Em construção</p>
-    </main>
+    <!-- Ecrã de entrada: entrar / criar conta / recuperar senha (ligado por ui/auth.js) -->
+    <div id="auth" class="auth-screen">
+      <section class="auth-card" aria-labelledby="auth-titulo">
+        <div class="auth-brand">
+          <svg class="logo logo-grande" viewBox="0 0 48 48" aria-hidden="true">
+            <defs>
+              <linearGradient id="mv-grad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#ffb15c" />
+                <stop offset="1" stop-color="#ff6a00" />
+              </linearGradient>
+            </defs>
+            <rect x="3" y="3" width="42" height="42" rx="12" fill="url(#mv-grad)" />
+            <rect x="9" y="12" width="3.4" height="3.4" rx="1" fill="#141008" opacity="0.8" />
+            <rect x="9" y="22.3" width="3.4" height="3.4" rx="1" fill="#141008" opacity="0.8" />
+            <rect x="9" y="32.6" width="3.4" height="3.4" rx="1" fill="#141008" opacity="0.8" />
+            <rect x="35.6" y="12" width="3.4" height="3.4" rx="1" fill="#141008" opacity="0.8" />
+            <rect x="35.6" y="22.3" width="3.4" height="3.4" rx="1" fill="#141008" opacity="0.8" />
+            <rect x="35.6" y="32.6" width="3.4" height="3.4" rx="1" fill="#141008" opacity="0.8" />
+            <path d="M20 16.2v15.6l13-7.8z" fill="#141008" />
+          </svg>
+          <h1 id="auth-titulo">Machine Video</h1>
+          <p class="auth-tag">Converse, veja e partilhe filmes com os seus amigos</p>
+        </div>
+
+        <div class="auth-tabs" role="tablist" aria-label="Início de sessão">
+          <button id="auth-tab-entrar" class="auth-tab is-active" type="button" role="tab" aria-selected="true">
+            Entrar
+          </button>
+          <button id="auth-tab-criar" class="auth-tab" type="button" role="tab" aria-selected="false">
+            Criar conta
+          </button>
+        </div>
+
+        <form id="form-entrar" class="auth-form" autocomplete="on" novalidate>
+          <label class="label">
+            Nome de utilizador
+            <input id="entrar-utilizador" name="username" class="input" maxlength="20" required autocomplete="username" />
+          </label>
+          <label class="label">
+            Senha
+            <input id="entrar-senha" name="password" type="password" class="input" required autocomplete="current-password" />
+          </label>
+          <p id="entrar-erro" class="form-erro" hidden></p>
+          <button class="btn btn-primary btn-block" type="submit">Entrar</button>
+          <button id="link-recuperar" class="link-plain" type="button">Esqueceu a senha?</button>
+        </form>
+
+        <form id="form-criar" class="auth-form" hidden autocomplete="off" novalidate>
+          <label class="label">
+            Nome de utilizador
+            <input id="criar-utilizador" class="input" maxlength="20" required />
+            <small class="hint">3 a 20 caracteres — letras, números ou _</small>
+          </label>
+          <label class="label">
+            Senha
+            <input id="criar-senha" type="password" class="input" minlength="6" required />
+            <small class="hint">Pelo menos 6 caracteres</small>
+          </label>
+          <label class="label">
+            Pergunta de segurança
+            <input id="criar-pergunta" class="input" maxlength="120" required placeholder="Ex.: Qual é o seu filme preferido?" />
+          </label>
+          <label class="label">
+            Resposta à pergunta
+            <input id="criar-resposta" class="input" maxlength="120" required />
+            <small class="hint">Vai servir para recuperar a senha</small>
+          </label>
+          <p id="criar-erro" class="form-erro" hidden></p>
+          <button class="btn btn-primary btn-block" type="submit">Criar conta</button>
+        </form>
+
+        <form id="form-recuperar" class="auth-form" hidden autocomplete="off" novalidate>
+          <p class="form-nota">
+            Indique o seu nome de utilizador, a resposta à sua pergunta de segurança e uma nova senha.
+          </p>
+          <label class="label">
+            Nome de utilizador
+            <input id="recuperar-utilizador" class="input" maxlength="20" required />
+          </label>
+          <label class="label">
+            Resposta à sua pergunta de segurança
+            <input id="recuperar-resposta" class="input" maxlength="120" required />
+          </label>
+          <label class="label">
+            Nova senha
+            <input id="recuperar-senha" type="password" class="input" minlength="6" required />
+            <small class="hint">Pelo menos 6 caracteres</small>
+          </label>
+          <p id="recuperar-erro" class="form-erro" hidden></p>
+          <button class="btn btn-primary btn-block" type="submit">Redefinir senha</button>
+          <button id="link-voltar-entrar" class="link-plain" type="button">Voltar ao início de sessão</button>
+        </form>
+      </section>
+      <footer class="auth-foot">Machine Video — a sua rede social de filmes</footer>
+    </div>
+
+    <!-- Aplicação: barra lateral (conversas/amigos) + zona principal swapável -->
+    <div id="app" class="app" hidden>
+      <aside id="sidebar" class="sidebar">
+        <header class="side-head">
+          <div class="brand">
+            <svg class="logo" viewBox="0 0 48 48" aria-hidden="true">
+              <rect x="3" y="3" width="42" height="42" rx="12" fill="url(#mv-grad)" />
+              <path d="M20 16.2v15.6l13-7.8z" fill="#141008" />
+            </svg>
+            <span class="brand-name">Machine Video</span>
+          </div>
+          <div class="side-user">
+            <span class="user-chip" title="A sua conta">
+              <span id="user-avatar" class="avatar avatar-sm">·</span>
+              <span id="user-nome" class="user-nome">…</span>
+            </span>
+            <button id="btn-sair" class="icon-btn" type="button" title="Terminar sessão" aria-label="Terminar sessão">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 8l-4 4 4 4M6 12h9"
+                  fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                />
+              </svg>
+            </button>
+          </div>
+        </header>
+
+        <nav class="side-tabs" role="tablist" aria-label="Painéis">
+          <button id="tab-conversas" class="side-tab is-active" type="button" role="tab" aria-selected="true">
+            Conversas
+          </button>
+          <button id="tab-amigos" class="side-tab" type="button" role="tab" aria-selected="false">
+            Amigos<span id="badge-pendentes" class="tab-badge" hidden></span>
+          </button>
+        </nav>
+
+        <section id="painel-conversas" class="side-panel">
+          <div class="panel-head">
+            <h2 class="panel-title">As suas conversas</h2>
+            <button id="btn-novo-grupo" class="btn btn-soft btn-sm" type="button">+ Novo grupo</button>
+          </div>
+          <ul id="lista-conversas" class="lista"></ul>
+        </section>
+
+        <section id="painel-amigos" class="side-panel" hidden>
+          <form id="form-amigo" class="add-amigo" autocomplete="off">
+            <input
+              id="amigo-nome"
+              class="input"
+              placeholder="Adicionar amigo (nome exato)"
+              maxlength="20"
+              required
+              aria-label="Nome exato do utilizador a adicionar"
+            />
+            <button class="btn btn-primary btn-sm" type="submit">Adicionar</button>
+          </form>
+          <div id="pedidos-zona" class="pedidos-zona"></div>
+          <h2 class="panel-title">Amigos</h2>
+          <ul id="lista-amigos" class="lista"></ul>
+        </section>
+      </aside>
+
+      <main id="main" class="main"></main>
+    </div>
+
+    <div id="toasts" class="toasts" aria-live="polite"></div>
+
+    <script type="module" src="/app.js"></script>
   </body>
 </html>

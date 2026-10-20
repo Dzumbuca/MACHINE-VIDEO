@@ -1,24 +1,357 @@
-/* Machine Video - estilos base (marca de posição até à interface final) */
+/*
+ * Machine Video — tema escuro (Task 9).
+ *
+ * Identidade: fundo carvão profundo, painéis frios e um acento laranja
+ * inspirado no cone do VLC — mas a marca é Machine Video. Desktop-first com
+ * barra lateral de contactos; em telemóvel a conversa ocupa todo o ecrã.
+ */
+
+:root {
+  --bg: #0b0d12;
+  --bg-glow: #161c29;
+  --panel: #12151d;
+  --panel-2: #191e29;
+  --panel-3: #202634;
+  --line: #262d3d;
+  --text: #e9edf5;
+  --muted: #98a2b8;
+  --faint: #5f6a7e;
+  --accent: #ff8a2a;
+  --accent-2: #ff6a00;
+  --accent-soft: rgba(255, 138, 42, 0.14);
+  --accent-ink: #1c1004;
+  --ok: #3ddc84;
+  --danger: #ff5d5d;
+  --radius: 12px;
+  --radius-sm: 9px;
+  --sombra: 0 18px 50px rgba(0, 0, 0, 0.45);
+}
 
 * {
   box-sizing: border-box;
 }
 
+html,
+body {
+  height: 100%;
+}
+
 body {
   margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--text);
+  background:
+    radial-gradient(1100px 700px at 80% -10%, var(--bg-glow) 0%, transparent 60%),
+    radial-gradient(900px 600px at -10% 110%, #131722 0%, transparent 55%),
+    var(--bg);
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border: 0;
+  background: none;
+}
+
+input {
+  font: inherit;
+}
+
+h1,
+h2,
+h3,
+p,
+ul {
+  margin: 0;
+}
+
+ul {
+  padding: 0;
+  list-style: none;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* ---- blocos básicos ------------------------------------------------------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1rem;
+  border-radius: var(--radius-sm);
+  background: var(--panel-3);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-weight: 600;
+  transition: filter 0.15s ease, transform 0.05s ease, background 0.15s ease;
+}
+
+.btn:hover {
+  filter: brightness(1.12);
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  border-color: transparent;
+  color: var(--accent-ink);
+}
+
+.btn-soft {
+  background: var(--accent-soft);
+  border-color: transparent;
+  color: var(--accent);
+}
+
+.btn-ghost {
+  background: transparent;
+  border-color: var(--line);
+  color: var(--muted);
+}
+
+.btn-sm {
+  padding: 0.35rem 0.7rem;
+  font-size: 0.85rem;
+  border-radius: 8px;
+}
+
+.btn-block {
+  width: 100%;
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  color: var(--muted);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.icon-btn:hover {
+  background: var(--panel-3);
+  color: var(--text);
+}
+
+.icon-btn svg {
+  width: 19px;
+  height: 19px;
+}
+
+.input {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: #0e1118;
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.input::placeholder {
+  color: var(--faint);
+}
+
+.input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.label {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.hint {
+  font-weight: 400;
+  font-size: 0.78rem;
+  color: var(--faint);
+}
+
+.form-erro {
+  padding: 0.55rem 0.7rem;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 93, 93, 0.12);
+  border: 1px solid rgba(255, 93, 93, 0.35);
+  color: #ffb1b1;
+  font-size: 0.85rem;
+}
+
+.form-nota {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.link-plain {
+  align-self: center;
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.link-plain:hover {
+  color: var(--accent);
+}
+
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex: none;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #2b3446, #1c2231);
+  border: 1px solid var(--line);
+  color: var(--text);
+  font-weight: 700;
+  text-transform: uppercase;
+  position: relative;
+}
+
+.avatar-sm {
+  width: 30px;
+  height: 30px;
+  font-size: 0.8rem;
+}
+
+.avatar-grp {
+  background: linear-gradient(135deg, #354763, #232c40);
+}
+
+/* ponto de presença canto do avatar */
+.dot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--faint);
+  border: 2px solid var(--panel);
+}
+
+.dot.on {
+  background: var(--ok);
+}
+
+.logo {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+}
+
+.logo-grande {
+  width: 60px;
+  height: 60px;
+  border-radius: 15px;
+  box-shadow: 0 10px 26px rgba(255, 122, 26, 0.28);
+}
+
+/* ---- ecrã de autenticação -------------------------------------------------- */
+
+.auth-screen {
   min-height: 100vh;
   display: grid;
   place-items: center;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  background-color: #0f1115;
-  color: #f2f4f8;
+  padding: 1.5rem;
+  position: relative;
 }
 
-h1 {
-  margin: 0 0 0.5rem;
+.auth-card {
+  width: min(420px, 100%);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 2rem 1.75rem 1.5rem;
+  box-shadow: var(--sombra);
+  position: relative;
+  overflow: hidden;
 }
 
-p {
-  margin: 0;
-  color: #9aa3b2;
+.auth-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
 }
+
+.auth-brand {
+  display: grid;
+  justify-items: center;
+  gap: 0.55rem;
+  margin-bottom: 1.4rem;
+  text-align: center;
+}
+
+.auth-brand h1 {
+  font-size: 1.65rem;
+  letter-spacing: 0.02em;
+}
+
+.auth-tag {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.auth-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  background: #0e1118;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  margin-bottom: 1.25rem;
+}
+
+.auth-tab {
+  padding: 0.5rem;
+  border-radius: 8px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.auth-tab.is-active {
+  background: var(--panel-3);
+  color: var(--text);
+}
+
+.auth-form {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.auth-foot {
+  position: absolute;
+  bottom: 1rem;
+  left: 0;
+  right: 0;
+  text-align: center;
+  color: var(--faint);
+  font-size: 0.8rem;
+}
+

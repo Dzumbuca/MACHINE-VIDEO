@@ -28,7 +28,10 @@ function createServer({ store } = {}) {
 
 if (require.main === module) {
   const port = process.env.PORT || 3000;
-  const { http } = createServer({ store: {} }); // store em memória por agora
+  // O arranque direto (npm start) usa a store em memória — sem ela, todas as
+  // rotas de API falhariam e a interface web seria inutilizável.
+  const { createStoreMemory } = require('./store-memory');
+  const { http } = createServer({ store: createStoreMemory() });
   http.listen(port, () => {
     console.log(`Machine Video a escutar em http://localhost:${port}`);
   });

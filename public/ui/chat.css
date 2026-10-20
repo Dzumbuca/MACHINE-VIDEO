@@ -1,0 +1,394 @@
+/* ui/chat.css — zona principal, conversa, modal, toasts e responsivo (Task 9). Dividido de style.css para manter cada ficheiro abaixo de 500 linhas. */
+
+/* ---- zona principal --------------------------------------------------------- */
+
+.main {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* estado vazio (sem conversa aberta) */
+
+.vazio {
+  flex: 1;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 0.8rem;
+  text-align: center;
+  padding: 2rem;
+}
+
+.vazio h2 {
+  font-size: 1.35rem;
+}
+
+.vazio p {
+  color: var(--muted);
+  max-width: 380px;
+}
+
+.vazio-icone {
+  width: 74px;
+  height: 74px;
+  border-radius: 20px;
+  display: grid;
+  place-items: center;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--accent);
+}
+
+.vazio-icone svg {
+  width: 34px;
+  height: 34px;
+}
+
+/* conversa aberta */
+
+.chat {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-head {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.7rem 1rem;
+  border-bottom: 1px solid var(--line);
+  background: rgba(18, 21, 29, 0.85);
+  backdrop-filter: blur(6px);
+}
+
+.btn-voltar {
+  display: none;
+}
+
+.chat-ident {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.chat-nome {
+  font-size: 1rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-sub {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.chat-sub .dot {
+  position: static;
+  width: 9px;
+  height: 9px;
+  border-width: 0;
+}
+
+.ws-pill {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: var(--panel-3);
+  color: var(--muted);
+  flex: none;
+}
+
+.ws-pill.on {
+  background: rgba(61, 220, 132, 0.14);
+  color: var(--ok);
+}
+
+.ws-pill.warn {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.chat-msgs {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 1rem 1.1rem;
+  scroll-behavior: smooth;
+}
+
+.carregar-mais {
+  align-self: center;
+  margin-bottom: 0.4rem;
+}
+
+.msg {
+  display: flex;
+}
+
+.msg.own {
+  justify-content: flex-end;
+}
+
+.msg-bolha {
+  max-width: min(72%, 560px);
+  padding: 0.5rem 0.75rem 0.35rem;
+  border-radius: 14px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-bottom-left-radius: 5px;
+  display: grid;
+  gap: 2px;
+}
+
+.msg.own .msg-bolha {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  border-color: transparent;
+  border-bottom-left-radius: 14px;
+  border-bottom-right-radius: 5px;
+  color: var(--accent-ink);
+}
+
+.msg-autor {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.msg-texto {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.msg-hora {
+  justify-self: end;
+  font-size: 0.68rem;
+  opacity: 0.75;
+}
+
+.vazio-chat {
+  margin: auto;
+  color: var(--faint);
+  font-size: 0.88rem;
+  text-align: center;
+}
+
+.chat-composer {
+  display: flex;
+  gap: 0.6rem;
+  padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.chat-composer .input {
+  flex: 1;
+}
+
+.btn-enviar {
+  width: 46px;
+  height: 46px;
+  flex: none;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: var(--accent-ink);
+  transition: filter 0.15s ease, transform 0.05s ease;
+}
+
+.btn-enviar:hover {
+  filter: brightness(1.1);
+}
+
+.btn-enviar:active {
+  transform: translateY(1px);
+}
+
+.btn-enviar svg {
+  width: 20px;
+  height: 20px;
+}
+
+.btn-enviar:disabled {
+  filter: grayscale(0.6) brightness(0.7);
+  cursor: not-allowed;
+}
+
+/* ---- modal de grupo ---------------------------------------------------------- */
+
+.modal {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(5, 7, 11, 0.7);
+  backdrop-filter: blur(4px);
+  z-index: 40;
+}
+
+.modal-card {
+  width: min(430px, 100%);
+  max-height: min(80vh, 560px);
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 1.25rem;
+  box-shadow: var(--sombra);
+}
+
+.modal-titulo {
+  font-size: 1.1rem;
+}
+
+.modal-lista {
+  overflow-y: auto;
+  display: grid;
+  gap: 0.25rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0.35rem;
+  min-height: 60px;
+}
+
+.modal-membro {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.5rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.92rem;
+}
+
+.modal-membro:hover {
+  background: var(--panel-2);
+}
+
+.modal-membro input {
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+}
+
+.modal-acoes {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+}
+
+/* ---- toasts ------------------------------------------------------------------ */
+
+.toasts {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  display: grid;
+  gap: 0.5rem;
+  z-index: 60;
+  max-width: min(340px, calc(100vw - 2rem));
+}
+
+.toast {
+  padding: 0.65rem 0.9rem;
+  border-radius: var(--radius-sm);
+  background: var(--panel-3);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  box-shadow: var(--sombra);
+  font-size: 0.88rem;
+  animation: entrar 0.18s ease;
+}
+
+.toast.erro {
+  border-left-color: var(--danger);
+}
+
+.toast.ok {
+  border-left-color: var(--ok);
+}
+
+@keyframes entrar {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---- barras de rolagem e movimento -------------------------------------------- */
+
+.chat-msgs::-webkit-scrollbar,
+.side-panel::-webkit-scrollbar,
+.modal-lista::-webkit-scrollbar {
+  width: 9px;
+}
+
+.chat-msgs::-webkit-scrollbar-thumb,
+.side-panel::-webkit-scrollbar-thumb,
+.modal-lista::-webkit-scrollbar-thumb {
+  background: #2b3243;
+  border-radius: 8px;
+  border: 2px solid var(--bg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ---- telemóvel ----------------------------------------------------------------- */
+
+@media (max-width: 760px) {
+  .app {
+    grid-template-columns: 1fr;
+  }
+
+  .main {
+    display: none;
+  }
+
+  /* com conversa aberta, a conversa ocupa o ecrã todo e a barra esconde-se */
+  .app.chat-open .main {
+    display: flex;
+  }
+
+  .app.chat-open .sidebar {
+    display: none;
+  }
+
+  .btn-voltar {
+    display: inline-flex;
+  }
+
+  .user-nome {
+    max-width: 72px;
+  }
+
+  .msg-bolha {
+    max-width: 82%;
+  }
+}
