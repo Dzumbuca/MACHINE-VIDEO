@@ -3,6 +3,7 @@
 const { utilizadorPublico } = require('./http-util');
 const { criarPresenca } = require('./presence');
 const { createChatHandlers } = require('./chat');
+const { createSignalHandlers } = require('./signal');
 
 /**
  * Hub WebSocket — Machine Video Social (Task 5).
@@ -20,7 +21,8 @@ const { createChatHandlers } = require('./chat');
  *   frame não-JSON → S→C {type:"error", code:"E_BADJSON"}
  *       socket autenticado mantém-se vivo; socket sem auth é fechado em seguida
  *   pós-auth: os tipos registados pelas tarefas seguintes são tratados por
- *       handlers próprios (Task 6: chat — src/chat.js); Tasks 7–8 chegam depois
+ *       handlers próprios (Task 6: chat — src/chat.js; Task 7: sinalização
+ *       WebRTC — src/signal.js)
  *   tipo desconhecido (autenticado) → {type:"error", code:"E_UNKNOWN_TYPE"},
  *       sem fechar (Review Focus: os tipos novos chegam nas Tasks 6–8)
  *   outro tipo antes de autenticar → ligação fechada (Review Focus 2)
@@ -66,6 +68,16 @@ function criarHub({ store, wss, authTimeoutMs = TEMPO_LIMITE_AUTH_MS_PADRAO }) {
   // Handlers pós-auth registados pelas tarefas seguintes. Task 6: o chat
   // reutiliza enviarDireto/enviarPara (best-effort, readyState + try/catch).
   const chat = createChatHandlers({ store, enviarDireto, enviarPara });
+
+  // Task 7: a sinalização WebRTC é relay puro e sem estado — usa os mesmos
+  // helpers de envio e o mapa de presença (sockets) para separar
+  // delivered/missed no ack de call_invite.
+  const sinal = createSignalHandlers({
+    store,
+    enviarDireto,
+    enviarPara,
+    sockets: presenca.sockets,
+  });
 
   /** Fecha com o handshake de fecho; nunca lança se já estiver a fechar. */
   function fechar(ws) {
@@ -133,11 +145,14 @@ function criarHub({ store, wss, authTimeoutMs = TEMPO_LIMITE_AUTH_MS_PADRAO }) {
       }
 
       // Autenticado: os tipos registados pelas tarefas seguintes são tratados
-      // pelos handlers próprios (Task 6: chat). O resto é desconhecido —
-      // responde com erro SEM fechar ('auth' nunca re-autentica).
+      // pelos handlers próprios (Task 6: chat; Task 7: sinalização WebRTC).
+      // O resto é desconhecido — responde com erro SEM fechar ('auth' nunca
+      // re-autentica).
       let tratado = false;
       try {
-        tratado = chat.handleEnvelope(envelope, estado.user, ws);
+        tratado =
+          chat.handleEnvelope(envelope, estado.user, ws) ||
+          sinal.handleEnvelope(envelope, estado.user, ws);
       } catch {
         // O handler não devia lançar; se lançar, o processo não pode morrer.
         tratado = true;
