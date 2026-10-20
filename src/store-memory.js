@@ -149,6 +149,12 @@ function createStoreMemory() {
 
   // --- conversas e mensagens ---------------------------------------------------------------
 
+  function copiaConv(conv) {
+    // Cópia profunda no memberIds: o array interno nunca partilha com callers
+    // (mutar a conv devolvida não altera isMember/listConversations).
+    return { ...conv, memberIds: [...conv.memberIds] };
+  }
+
   function createConversation(memberIds, isGroup, title) {
     if (!Array.isArray(memberIds) || memberIds.length === 0) {
       throw new StoreError('E_INVALID', 'A conversa precisa de pelo menos um membro');
@@ -163,7 +169,7 @@ function createStoreMemory() {
     };
     conversationsById.set(conv.id, conv);
     messagesByConversation.set(conv.id, []);
-    return { ...conv };
+    return copiaConv(conv);
   }
 
   function isMember(convId, userId) {
@@ -175,7 +181,7 @@ function createStoreMemory() {
     exigeUser(userId);
     const resultado = [];
     for (const conv of conversationsById.values()) {
-      if (conv.memberIds.includes(userId)) resultado.push({ ...conv });
+      if (conv.memberIds.includes(userId)) resultado.push(copiaConv(conv));
     }
     return resultado;
   }

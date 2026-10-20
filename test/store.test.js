@@ -166,4 +166,14 @@ test('objetos devolvidos são cópias (mutação externa não afeta o store)', (
   const [msg] = store.listMessages(conv.id, 1, null);
   msg.text = 'hacked';
   assert.strictEqual(store.listMessages(conv.id, 1, null)[0].text, 'olá');
+
+  // conversas: mutar memberIds da conv devolvida não corrompe a membership
+  const devolvida = store.listConversations(alice.id)[0];
+  devolvida.memberIds.push('intruso');
+  assert.strictEqual(store.isMember(conv.id, 'intruso'), false);
+
+  const criada = store.createConversation([alice.id, bob.id], true, 'outro');
+  criada.memberIds.push('intruso');
+  assert.strictEqual(store.isMember(criada.id, 'intruso'), false);
+  assert.strictEqual(store.listConversations(alice.id).length, 2);
 });
