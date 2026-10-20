@@ -4,6 +4,7 @@ const { utilizadorPublico } = require('./http-util');
 const { criarPresenca } = require('./presence');
 const { createChatHandlers } = require('./chat');
 const { createSignalHandlers } = require('./signal');
+const { createSessionHandlers } = require('./session');
 
 /**
  * Hub WebSocket — Machine Video Social (Task 5).
@@ -22,7 +23,7 @@ const { createSignalHandlers } = require('./signal');
  *       socket autenticado mantém-se vivo; socket sem auth é fechado em seguida
  *   pós-auth: os tipos registados pelas tarefas seguintes são tratados por
  *       handlers próprios (Task 6: chat — src/chat.js; Task 7: sinalização
- *       WebRTC — src/signal.js)
+ *       WebRTC — src/signal.js; Task 8: sessões de filme — src/session.js)
  *   tipo desconhecido (autenticado) → {type:"error", code:"E_UNKNOWN_TYPE"},
  *       sem fechar (Review Focus: os tipos novos chegam nas Tasks 6–8)
  *   outro tipo antes de autenticar → ligação fechada (Review Focus 2)
@@ -78,6 +79,10 @@ function criarHub({ store, wss, authTimeoutMs = TEMPO_LIMITE_AUTH_MS_PADRAO }) {
     enviarPara,
     sockets: presenca.sockets,
   });
+
+  // Task 8: as sessões de filme mantêm estado NO servidor (anfitrião-
+  // autoritativa) e usam os mesmos helpers de envio best-effort.
+  const sessoes = createSessionHandlers({ store, enviarDireto, enviarPara });
 
   /** Fecha com o handshake de fecho; nunca lança se já estiver a fechar. */
   function fechar(ws) {
@@ -145,14 +150,15 @@ function criarHub({ store, wss, authTimeoutMs = TEMPO_LIMITE_AUTH_MS_PADRAO }) {
       }
 
       // Autenticado: os tipos registados pelas tarefas seguintes são tratados
-      // pelos handlers próprios (Task 6: chat; Task 7: sinalização WebRTC).
-      // O resto é desconhecido — responde com erro SEM fechar ('auth' nunca
-      // re-autentica).
+      // pelos handlers próprios (Task 6: chat; Task 7: sinalização WebRTC;
+      // Task 8: sessões de filme). O resto é desconhecido — responde com
+      // erro SEM fechar ('auth' nunca re-autentica).
       let tratado = false;
       try {
         tratado =
           chat.handleEnvelope(envelope, estado.user, ws) ||
-          sinal.handleEnvelope(envelope, estado.user, ws);
+          sinal.handleEnvelope(envelope, estado.user, ws) ||
+          sessoes.handleEnvelope(envelope, estado.user, ws);
       } catch {
         // O handler não devia lançar; se lançar, o processo não pode morrer.
         tratado = true;
