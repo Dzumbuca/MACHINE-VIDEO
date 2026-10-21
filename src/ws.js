@@ -60,14 +60,35 @@ function criarHub({ store, wss, authTimeoutMs = TEMPO_LIMITE_AUTH_MS_PADRAO }) {
 
   /**
    * Difunde a presença do utilizador afetado — e só aos amigos dele.
-   * Assíncrona (a store pode ser a de Postgres, Task 11); nunca lança —
-   * os destinos vêm de destinosPresenca, que engole falhas da store.
+   *
+   * Os anúncios do MESMO utilizador são SERIALIZADOS (cadeia de promises por
+   * userId): com a store-pg assíncrona, um anúncio "online" (auth) e um
+   * "offline" (fecho imediato / reconexão) sobrepostos podiam completar fora
+   * de ordem e os amigos ficariam com o estado antigo. Serializados, o último
+   * anúncio entregue reflete sempre o estado MAIS RECENTE. Nunca lança — os
+   * destinos vêm de destinosPresenca (que engole falhas da store) e a cadeia
+   * engole o resto; presença é best-effort e não bloqueia os envelopes.
+   *
+   * @returns {Promise<void>} promise do anúncio (fire-and-forget nos call sites)
    */
-  async function anunciarPresenca(userId, online) {
+  const cadeiasPresenca = new Map(); // userId → último anúncio em curso
+
+  async function difundirPresenca(userId, online) {
     const envelope = { type: 'presence', userId, online: Boolean(online) };
     for (const destino of await presenca.destinosPresenca(userId)) {
       enviarPara(destino, envelope);
     }
+  }
+
+  function anunciarPresenca(userId, online) {
+    const anterior = cadeiasPresenca.get(userId) ?? Promise.resolve();
+    const proxima = anterior.then(() => difundirPresenca(userId, online)).catch(() => {});
+    cadeiasPresenca.set(userId, proxima);
+    // Libertar a entrada quando este for o último anúncio da cadeia do user.
+    proxima.then(() => {
+      if (cadeiasPresenca.get(userId) === proxima) cadeiasPresenca.delete(userId);
+    });
+    return proxima;
   }
 
   // Handlers pós-auth registados pelas tarefas seguintes. Task 6: o chat

@@ -207,7 +207,11 @@ async function createStorePg(connectionString, { reset = false, ...opcoesPool } 
   }
 
   async function deleteSession(token) {
-    await pool.query('DELETE FROM sessions WHERE token = $1'); // idempotente
+    // SEM o array de valores, o pg usa o protocolo simple-query e o Postgres
+    // devolve 42P02 ("there is no parameter $1") — o token nunca seria
+    // apagado. (Padrão vigiado por um teste de regressão em
+    // test/store-pg.test.js: toda query com placeholder passa os valores.)
+    await pool.query('DELETE FROM sessions WHERE token = $1', [token]); // idempotente
   }
 
   // --- amizades ---------------------------------------------------------------
