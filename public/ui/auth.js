@@ -71,18 +71,21 @@ export function montarAuth({ aoEntrar } = {}) {
   $('link-recuperar').addEventListener('click', () => mostrar('recuperar'));
   $('link-voltar-entrar').addEventListener('click', () => mostrar('entrar'));
 
-  // --- Entrar com Google (v1.1) ----------------------------------------------
+  // --- Entrar / criar conta com Google (v1.1) ------------------------------
 
-  // O botão só aparece se o servidor tiver credenciais Google configuradas.
+  // Os botões só aparecem se o servidor tiver credenciais Google configuradas.
+  const botoesGoogle = document.querySelectorAll('[data-google-btn]');
   fetch('/api/auth/providers')
     .then((r) => r.json())
     .then((p) => {
-      if (p && p.ok && p.google) $('btn-google').hidden = false;
+      if (p && p.ok && p.google) {
+        botoesGoogle.forEach((b) => { b.hidden = false; });
+      }
     })
-    .catch(() => {}); // sem servidor: botão fica escondido
-  $('btn-google').addEventListener('click', () => {
+    .catch(() => {}); // sem servidor: botões ficam escondidos
+  botoesGoogle.forEach((b) => b.addEventListener('click', () => {
     window.location.assign('/api/auth/google/start');
-  });
+  }));
 
   $('form-entrar').addEventListener('submit', async (evento) => {
     evento.preventDefault();
