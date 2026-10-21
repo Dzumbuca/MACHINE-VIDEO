@@ -4,7 +4,7 @@
  * persiste enquanto houver token). call.js/movie.js registam-se no WsClient.
  */
 
-import { api, lerToken, limparToken } from './api.js';
+import { api, lerToken, limparToken, guardarToken } from './api.js';
 import { WsClient } from './ws.js';
 import { montarAuth, reporAuth } from './ui/auth.js';
 import * as vistas from './ui/views.js';
@@ -54,6 +54,20 @@ function iniciar() {
 }
 
 async function retomarSessao() {
+  // OAuth Google (v1.1): o callback volta com o token no fragmento (#auth=…)
+  // — fragments nunca chegam ao servidor, por isso não aparecem em logs.
+  if (location.hash.startsWith('#auth=')) {
+    const tokenGoogle = decodeURIComponent(location.hash.slice(6));
+    location.hash = '';
+    if (tokenGoogle) {
+      guardarToken(tokenGoogle);
+    }
+  } else if (location.hash.startsWith('#erro=google')) {
+    location.hash = '';
+    // O ecrã de entrada ainda não existe aqui — a mensagem fica para o toast
+    // do montarAuth via sessionStorage.
+    sessionStorage.setItem('mv_erro_entrada', 'Não foi possível entrar com o Google. Tenta novamente.');
+  }
   if (!lerToken()) return mostrarAuth();
   try {
     const { user } = await api.eu();
@@ -65,6 +79,12 @@ async function retomarSessao() {
 }
 
 function mostrarAuth() {
+  const erroPendente = sessionStorage.getItem('mv_erro_entrada');
+  if (erroPendente) {
+    sessionStorage.removeItem('mv_erro_entrada');
+    // O toast dispara no próximo tick — o ecrã de auth acabou de montar.
+    setTimeout(() => vistas.toast(erroPendente, 'erro'), 50);
+  }
   $('app').hidden = true;
   $('auth').hidden = false;
   document.body.classList.remove('chat-open');

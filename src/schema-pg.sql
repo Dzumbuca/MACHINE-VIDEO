@@ -79,3 +79,11 @@ CREATE TABLE IF NOT EXISTS messages (
   seq BIGSERIAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_messages_conv_seq ON messages (conv_id, seq);
+
+-- v1.1 — login com Google (colunas aditivas, idempotentes)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id
+  ON users (google_id) WHERE google_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email
+  ON users (email) WHERE email IS NOT NULL;

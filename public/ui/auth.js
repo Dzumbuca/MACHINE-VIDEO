@@ -71,7 +71,18 @@ export function montarAuth({ aoEntrar } = {}) {
   $('link-recuperar').addEventListener('click', () => mostrar('recuperar'));
   $('link-voltar-entrar').addEventListener('click', () => mostrar('entrar'));
 
-  // --- Entrar ----------------------------------------------------------------
+  // --- Entrar com Google (v1.1) ----------------------------------------------
+
+  // O botão só aparece se o servidor tiver credenciais Google configuradas.
+  fetch('/api/auth/providers')
+    .then((r) => r.json())
+    .then((p) => {
+      if (p && p.ok && p.google) $('btn-google').hidden = false;
+    })
+    .catch(() => {}); // sem servidor: botão fica escondido
+  $('btn-google').addEventListener('click', () => {
+    window.location.assign('/api/auth/google/start');
+  });
 
   $('form-entrar').addEventListener('submit', async (evento) => {
     evento.preventDefault();

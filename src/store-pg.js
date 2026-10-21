@@ -34,6 +34,7 @@
 const crypto = require('node:crypto');
 const { Pool } = require('pg');
 const { StoreError } = require('./store');
+const { criarMetodosGooglePg } = require('./store-pg-google');
 
 /**
  * Schema idempotente — vive em src/schema-pg.sql (com notas de desenho) e
@@ -116,6 +117,9 @@ async function createStorePg(connectionString, { reset = false, ...opcoesPool } 
   if (reset) {
     await pool.query(TRUNCATE_SQL);
   }
+
+  // Métodos Google (v1.1) — mixin em src/store-pg-google.js.
+  const metodosGoogle = criarMetodosGooglePg(pool);
 
   /** Garante que o utilizador existe ou lança E_NOTFOUND. */
   async function exigeUser(db, userId) {
@@ -474,6 +478,8 @@ async function createStorePg(connectionString, { reset = false, ...opcoesPool } 
     getUserByUsername,
     getUserById,
     updateUserPassword,
+    // Google (v1.1) — mixin src/store-pg-google.js (mantém este ficheiro <500 linhas)
+    ...metodosGoogle,
     // sessões
     createSession,
     getUserByToken,

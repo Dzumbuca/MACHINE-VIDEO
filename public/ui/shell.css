@@ -247,3 +247,13 @@
   border-radius: var(--radius-sm);
 }
 
+
+/* Entrar com Google (v1.1) */
+.btn-google {
+  background: #fff;
+  color: #1f1f1f;
+  border: 1px solid var(--border, #444);
+  font-weight: 600;
+}
+.btn-google:hover { background: #f1f3f4; }
+.btn-google:disabled { opacity: 0.5; }

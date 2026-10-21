@@ -74,6 +74,43 @@ function createStoreMemory() {
     return { ...user };
   }
 
+  // --- Google (v1.1 — login com Google) --------------------------------------
+
+  function getUserByGoogleId(googleId) {
+    if (googleId == null) return null;
+    for (const user of usersById.values()) {
+      if (user.googleId === googleId) return { ...user };
+    }
+    return null;
+  }
+
+  function getUserByEmail(email) {
+    if (email == null) return null;
+    for (const user of usersById.values()) {
+      if (user.email === email) return { ...user };
+    }
+    return null;
+  }
+
+  // Liga uma conta Google a um utilizador existente (mesmo email verificado).
+  function linkGoogleToUser(userId, { googleId, email }) {
+    const user = exigeUser(userId);
+    user.googleId = googleId;
+    user.email = email;
+    return { ...user };
+  }
+
+  // Cria utilizador via Google: sem senha nem pergunta de segurança.
+  function createUserWithGoogle({ username, email, googleId }) {
+    const user = {
+      id: novoId(), username, passHash: null, secQ: null, secA: null,
+      email, googleId, createdAt: agora(),
+    };
+    usersById.set(user.id, user);
+    userIdByUsername.set(username, user.id);
+    return { ...user };
+  }
+
   // --- sessões ---------------------------------------------------------------
 
   function createSession(userId) {
@@ -269,6 +306,11 @@ function createStoreMemory() {
     getUserByUsername,
     getUserById,
     updateUserPassword,
+    // Google (v1.1)
+    getUserByGoogleId,
+    getUserByEmail,
+    linkGoogleToUser,
+    createUserWithGoogle,
     // sessões
     createSession,
     getUserByToken,

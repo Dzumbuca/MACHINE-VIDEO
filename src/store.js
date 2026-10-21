@@ -46,6 +46,14 @@
  *   appendMessage(convId, userId, text)            → msg
  *   listMessages(convId, limit, beforeId)          → [msg]
  *
+ * Google (v1.1 — login com Google; aditivos):
+ *   getUserByGoogleId(googleId)                    → user | null
+ *   getUserByEmail(email)                          → user | null
+ *   linkGoogleToUser(userId, {googleId, email})    → user (liga conta Google
+ *                a um utilizador existente com o mesmo email verificado)
+ *   createUserWithGoogle({username, email, googleId}) → user (sem senha nem
+ *                pergunta de segurança; o chamador garante username único)
+ *
  * Formas dos objetos (mínimo garantido):
  *   user   = { id, username, passHash, secQ, secA, createdAt }
  *   pedido = { id, fromId, toId, status: 'pending' | 'accepted', createdAt }

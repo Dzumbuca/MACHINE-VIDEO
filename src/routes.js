@@ -6,6 +6,7 @@ const path = require('node:path');
 const { createAuthHandlers } = require('./auth');
 const { createFriendsHandlers } = require('./friends');
 const { createChatHandlers } = require('./chat');
+const { createGoogleHandlers } = require('./google');
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -23,6 +24,8 @@ function createRouter({ store, publicDir }) {
   const auth = createAuthHandlers({ store });
   const friends = createFriendsHandlers({ store });
   const chat = createChatHandlers({ store });
+  const google = createGoogleHandlers({ store });
+
 
   // Despacho async com rede de segurança: um pedido abortado não pode
   // derrubar o processo (o handler sync anterior era protegido pelo Node).
@@ -45,6 +48,21 @@ function createRouter({ store, publicDir }) {
     if (rotaAuth) {
       const { status, body } = await rotaAuth(req);
       sendJson(res, status, body);
+      return;
+    }
+
+    // Login com Google (v1.1): providers → estado; start/callback → redirects
+    // (manipulam o res diretamente — não passam pelo despacho JSON).
+    if (pathname === '/api/auth/providers') {
+      sendJson(res, 200, { ok: true, ...google.providers() });
+      return;
+    }
+    if (pathname === '/api/auth/google/start') {
+      await google.iniciar(req, res);
+      return;
+    }
+    if (pathname === '/api/auth/google/callback') {
+      await google.callback(req, res, new URL(req.url, 'http://localhost'));
       return;
     }
 
