@@ -119,3 +119,10 @@ export const api = {
 };
 
 export { lerToken, guardarToken, limparToken };
+
+// Manutenção: um toque a cada 4 min evita que o Render adormeça com alguém
+// com o app aberto (o plano grátis dorme após ~15 min sem pedidos).
+const _manutencao = setInterval(() => {
+  if (lerToken()) fetch('/api/health').catch(() => {});
+}, 4 * 60 * 1000);
+if (typeof _manutencao.unref === 'function') _manutencao.unref(); // não segurar o Node nos testes

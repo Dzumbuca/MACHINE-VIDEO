@@ -189,12 +189,15 @@ export class WsClient {
       return;
     }
     this._falhas += 1;
+    // Nunca desistimos enquanto houver token: o servidor pode estar apenas a
+    // acordar (plano grátis do Render adormece ~15 min) ou a reiniciar. O UI
+    // mostra 'dead' (sem ligação, a persistir) e a app valida o token por API
+    // — só sai quando /api/me responder 401.
     if (this._falhas >= FALHAS_ATE_MORTA) {
-      // Cinco tentativas sem auth_ok: o token já não serve (sessão expirada).
       this._definirStatus('dead');
-      return;
+    } else {
+      this._definirStatus('reconnecting');
     }
-    this._definirStatus('reconnecting');
     this._agendarReconexao();
   }
 

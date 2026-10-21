@@ -1,15 +1,7 @@
 /**
- * app.js — orquestrador do Machine Video (Task 9).
- *
- * Fluxo: arranque → sessão guardada em localStorage (GET /api/me) → ecrã de
- * autenticação ou aplicação. Na aplicação: barra lateral (conversas/amigos),
- * zona principal swapável e um único WsClient (reconexão automática) que
- * entrega presenças e mensagens em tempo real.
- *
- * INTEGRAÇÃO DA TASK 10 (chamadas e sessões de filme):
- *   - call.js e movie.js registam-se no WsClient atual (ligarWs) e montam as
- *     suas vistas com montarVistaPrincipal; o chip flutuante permite voltar;
- *   - os botões "Chamar" e "Sessão de filme" ficam no cabeçalho da conversa.
+ * app.js — orquestrador do Machine Video. Sessão via localStorage → auth ou
+ * app (barra lateral + zona principal swapável + WsClient com reconexão que
+ * persiste enquanto houver token). call.js/movie.js registam-se no WsClient.
  */
 
 import { api, lerToken, limparToken } from './api.js';
@@ -135,15 +127,26 @@ function ligarWs() {
   ws.on('presence', receberPresenca);
   ws.onStatus((s) => {
     if (refsConversa) vistas.definirEstadoWs(refsConversa, s);
-    if (s === 'dead') sessaoMorta();
+    if (s === 'dead') validarSessaoOuAvisar();
   });
   iniciarChamadas(); iniciarSessoesFilme(); // Task 10: registam handlers no ws novo
   ws.connect(lerToken());
 }
 
-function sessaoMorta() {
-  // Cinco tentativas sem autenticação: o token já não vale — entrar de novo.
-  sairLocal('A sua sessão expirou. Entre novamente.');
+// 'dead' valida por API: 401 → sair; 200 → servidor a acordar, o WS persiste.
+let aValidarSessao = false;
+async function validarSessaoOuAvisar() {
+  if (aValidarSessao) return;
+  aValidarSessao = true;
+  try {
+    if (!lerToken()) { sairLocal(); return; }
+    await api.eu(); // 200 → o token vale; mantemos as tentativas do WS
+    vistas.toast('Sem ligação ao servidor — a tentar reconectar…', 'erro');
+  } catch (erro) {
+    if (erro && erro.status === 401) sairLocal('A tua sessão expirou. Entre novamente.');
+  } finally {
+    aValidarSessao = false;
+  }
 }
 
 function receberMensagem(envelope) {
@@ -193,7 +196,6 @@ function receberPresenca(envelope) {
   }
 }
 
-// ---- carregamento e barra lateral ------------------------------------------------
 
 async function carregarTudo() {
   await Promise.allSettled([carregarConversas(), carregarAmigos()]);
@@ -299,7 +301,6 @@ function mudarAba(aba) {
   $('painel-amigos').hidden = aba !== 'amigos';
 }
 
-// ---- ações: amigos ----------------------------------------------------------------
 
 async function adicionarAmigo(ev) {
   ev.preventDefault();
@@ -357,7 +358,6 @@ function abrirModalGrupo() {
   });
 }
 
-// ---- conversa aberta ----------------------------------------------------------------
 
 async function abrirConversa(id) {
   const conv = estado.conversas.find((c) => c.id === id);
