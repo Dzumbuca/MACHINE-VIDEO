@@ -154,6 +154,33 @@ function createStoreMemory() {
     return saoAmigos(a, b);
   }
 
+  // Método aditivo (Task 11): as pendências vivem na store — um servidor
+  // persistente com restart continua a mostrá-las (GET /api/friends lê daqui).
+  function listFriendRequests(userId) {
+    exigeUser(userId);
+    const pendingIn = [];
+    const pendingOut = [];
+    for (const p of friendRequestsById.values()) {
+      if (p.status !== 'pending') continue;
+      if (p.toId === userId) {
+        pendingIn.push({
+          id: p.id,
+          fromUserId: p.fromId,
+          fromUsername: usersById.get(p.fromId).username,
+          createdAt: p.createdAt,
+        });
+      } else if (p.fromId === userId) {
+        pendingOut.push({
+          id: p.id,
+          toUserId: p.toId,
+          toUsername: usersById.get(p.toId).username,
+          createdAt: p.createdAt,
+        });
+      }
+    }
+    return { pendingIn, pendingOut };
+  }
+
   // --- conversas e mensagens ---------------------------------------------------------------
 
   function copiaConv(conv) {
@@ -243,6 +270,7 @@ function createStoreMemory() {
     acceptFriendRequest,
     listFriends,
     areFriends,
+    listFriendRequests,
     // conversas e mensagens
     createConversation,
     isMember,

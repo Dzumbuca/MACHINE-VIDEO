@@ -81,16 +81,17 @@ function createSignalHandlers({ store, enviarDireto, enviarPara, sockets }) {
    * Valida TODOS os destinos (existência e amizade) antes de qualquer
    * entrega — um destino mau responde o erro e devolve null, sem entrega
    * parcial. Devolve a lista deduplicada, pela ordem recebida.
-   * @returns {string[] | null} destinos válidos, ou null se já respondeu erro
+   * Assíncrono porque a store pode ser a de Postgres (Task 11).
+   * @returns {Promise<string[] | null>} destinos válidos, ou null se já respondeu erro
    */
-  function validarDestinos(ws, user, toUserIds) {
+  async function validarDestinos(ws, user, toUserIds) {
     const destinos = [...new Set(toUserIds)];
     for (const destino of destinos) {
-      if (!store.getUserById(destino)) {
+      if (!(await store.getUserById(destino))) {
         erro(ws, 'E_NOTFOUND');
         return null;
       }
-      if (!store.areFriends(user.id, destino)) {
+      if (!(await store.areFriends(user.id, destino))) {
         erro(ws, 'E_FORBIDDEN');
         return null;
       }
@@ -100,12 +101,12 @@ function createSignalHandlers({ store, enviarDireto, enviarPara, sockets }) {
 
   // --- call_invite ----------------------------------------------------------
 
-  function tratarInvite(envelope, user, ws) {
+  async function tratarInvite(envelope, user, ws) {
     if (!callIdValido(envelope.callId) || !destinosValidos(envelope.toUserIds)) {
       erro(ws, 'E_INVALID');
       return true;
     }
-    const destinos = validarDestinos(ws, user, envelope.toUserIds);
+    const destinos = await validarDestinos(ws, user, envelope.toUserIds);
     if (!destinos) return true;
 
     const incoming = {
@@ -140,7 +141,7 @@ function createSignalHandlers({ store, enviarDireto, enviarPara, sockets }) {
 
   // --- call_signal ----------------------------------------------------------
 
-  function tratarSinal(envelope, user, ws) {
+  async function tratarSinal(envelope, user, ws) {
     const toUserId = envelope.toUserId;
     if (
       !callIdValido(envelope.callId) ||
@@ -150,7 +151,7 @@ function createSignalHandlers({ store, enviarDireto, enviarPara, sockets }) {
       erro(ws, 'E_INVALID');
       return true;
     }
-    if (!validarDestinos(ws, user, [toUserId])) return true;
+    if (!(await validarDestinos(ws, user, [toUserId]))) return true;
 
     // Amigo mas sem socket → E_NOTFOUND (decisão do controller): em
     // call_signal o destino ausente é erro, o cliente precisa de saber que a
@@ -172,12 +173,12 @@ function createSignalHandlers({ store, enviarDireto, enviarPara, sockets }) {
 
   // --- call_end -------------------------------------------------------------
 
-  function tratarFim(envelope, user, ws) {
+  async function tratarFim(envelope, user, ws) {
     if (!callIdValido(envelope.callId) || !destinosValidos(envelope.toUserIds)) {
       erro(ws, 'E_INVALID');
       return true;
     }
-    const destinos = validarDestinos(ws, user, envelope.toUserIds);
+    const destinos = await validarDestinos(ws, user, envelope.toUserIds);
     if (!destinos) return true;
 
     const fim = {
@@ -193,9 +194,9 @@ function createSignalHandlers({ store, enviarDireto, enviarPara, sockets }) {
   }
 
   /** Rede de segurança: um handler nunca derruba o hub (espelho do ws.js). */
-  function comRedeSeguranca(fn, ws) {
+  async function comRedeSeguranca(fn, ws) {
     try {
-      return fn();
+      return await fn();
     } catch {
       erro(ws, 'E_INTERNAL');
       return true;
@@ -207,7 +208,7 @@ function createSignalHandlers({ store, enviarDireto, enviarPara, sockets }) {
    * pertence ao signal (tratado, com sucesso ou com erro); false deixa o hub
    * responder E_UNKNOWN_TYPE. Nunca lança.
    */
-  function handleEnvelope(envelope, user, ws) {
+  async function handleEnvelope(envelope, user, ws) {
     if (!envelope || typeof envelope !== 'object') return false;
     switch (envelope.type) {
       case 'call_invite':

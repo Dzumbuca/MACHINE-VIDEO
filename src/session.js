@@ -122,17 +122,18 @@ function createSessionHandlers({ store, enviarDireto, enviarPara }) {
   /**
    * Valida existência e amizade de TODOS os convidados antes de qualquer
    * entrega (mesma ordem do relay da Task 7: E_NOTFOUND primeiro).
-   * @returns {string[] | null} convidados deduplicados, ou null se já
-   *   respondeu erro
+   * Assíncrono porque a store pode ser a de Postgres (Task 11).
+   * @returns {Promise<string[] | null>} convidados deduplicados, ou null se
+   *   já respondeu erro
    */
-  function validarConvidados(ws, user, toUserIds) {
+  async function validarConvidados(ws, user, toUserIds) {
     const convidados = [...new Set(toUserIds)];
     for (const destino of convidados) {
-      if (!store.getUserById(destino)) {
+      if (!(await store.getUserById(destino))) {
         erro(ws, 'E_NOTFOUND');
         return null;
       }
-      if (!store.areFriends(user.id, destino)) {
+      if (!(await store.areFriends(user.id, destino))) {
         erro(ws, 'E_FORBIDDEN');
         return null;
       }
@@ -149,7 +150,7 @@ function createSessionHandlers({ store, enviarDireto, enviarPara }) {
 
   // --- session_create ---------------------------------------------------------
 
-  function tratarCriacao(envelope, user, ws) {
+  async function tratarCriacao(envelope, user, ws) {
     const { title, fileName, durationSec, toUserIds } = envelope;
     if (
       typeof title !== 'string' ||
@@ -160,7 +161,7 @@ function createSessionHandlers({ store, enviarDireto, enviarPara }) {
       erro(ws, 'E_INVALID');
       return;
     }
-    const convidados = validarConvidados(ws, user, toUserIds);
+    const convidados = await validarConvidados(ws, user, toUserIds);
     if (!convidados) return;
 
     const sessionId = crypto.randomUUID();
@@ -305,9 +306,9 @@ function createSessionHandlers({ store, enviarDireto, enviarPara }) {
   }
 
   /** Rede de segurança: um handler nunca derruba o hub (espelho do ws.js). */
-  function comRedeSeguranca(fn, ws) {
+  async function comRedeSeguranca(fn, ws) {
     try {
-      fn();
+      await fn();
       return true;
     } catch {
       erro(ws, 'E_INTERNAL');
@@ -320,7 +321,7 @@ function createSessionHandlers({ store, enviarDireto, enviarPara }) {
    * sessão (tratado, com sucesso ou com erro); false deixa o hub responder
    * E_UNKNOWN_TYPE. Nunca lança.
    */
-  function handleEnvelope(envelope, user, ws) {
+  async function handleEnvelope(envelope, user, ws) {
     if (!envelope || typeof envelope !== 'object') return false;
     switch (envelope.type) {
       case 'session_create':

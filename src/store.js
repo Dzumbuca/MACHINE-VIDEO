@@ -11,6 +11,11 @@
  * Ambas exportam uma factory e cumprem **exatamente** os métodos abaixo —
  * nomes, parâmetros e retornos não podem ser alterados.
  *
+ * NOTA (tarefa 11): a store em PostgreSQL é assíncrona — cada método devolve
+ * uma Promise (I/O de rede é inerente ao Postgres). Quem consome a store faz
+ * `await` em TODAS as chamadas; com a store em memória o `await` é um no-op,
+ * pelo que o mesmo código serve as duas implementações.
+ *
  * Métodos do contrato:
  *   createUser({ username, passHash, secQ, secA }) → user
  *   getUserByUsername(username)                    → user | null
@@ -24,6 +29,13 @@
  *   acceptFriendRequest(requestId, toId)           → pedido atualizado
  *   listFriends(userId)                            → [user]
  *   areFriends(a, b)                               → boolean
+ *   listFriendRequests(userId)                     → { pendingIn, pendingOut }
+ *                (aditivo, Task 11: pendências de amizade lidas da store, para
+ *                sobreviverem a restarts de um servidor persistente.
+ *                pendingIn = [{ id, fromUserId, fromUsername, createdAt }],
+ *                pendingOut = [{ id, toUserId, toUsername, createdAt }] — só
+ *                pedidos com status 'pending', por ordem de criação.
+ *                Utilizador desconhecido → E_NOTFOUND.)
  *   createConversation(memberIds, isGroup, title)  → conv
  *   isMember(convId, userId)                       → boolean
  *   listConversations(userId)                      → [conv]

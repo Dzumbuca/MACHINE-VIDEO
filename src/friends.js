@@ -30,11 +30,10 @@ const {
  *   - as respostas nunca expõem `passHash`/`secA`: o utilizador público é só
  *     { id, username }, como em src/auth.js.
  *
- * A store não expõe listagem de pedidos pendentes (contrato fechado em
- * src/store.js), mas `GET /api/friends` precisa de `pendingIn`/`pendingOut`.
- * Este módulo mantém um registo local dos pedidos que criou: é preenchido
- * apenas por POST /api/friends/request (todo o pedido de amizade passa por
- * aqui) e a entrada sai quando o pedido é aceite.
+ * As pendências (pendingIn/pendingOut) são lidas da store via
+ * `listFriendRequests` (aditivo da Task 11) — um registo local perder-se-ia
+ * num servidor persistente com restart (a DB teria a pendência mas as listas
+ * apareceriam vazias, contradizendo o E_DUP de um pedido duplicado).
  *
  * Cada handler devolve { status, body }; o router (src/routes.js) escreve a
  * resposta. Erros previstos via HttpError são convertidos em { ok:false }.
@@ -57,56 +56,51 @@ function traduzErroStore(err) {
 }
 
 function createFriendsHandlers({ store }) {
-  /** @type {Map<string, object>} requestId -> pedido (só os ainda pendentes) */
-  const pedidosPendentes = new Map();
-
   async function pedirAmizade(req) {
-    const { user: eu } = exigirSessao(req, store);
+    const { user: eu } = await exigirSessao(req, store);
     const corpo = await lerCorpoJson(req);
-    const alvo = store.getUserByUsername(corpo.username);
+    const alvo = await store.getUserByUsername(corpo.username);
     if (!alvo) falha(404, 'Utilizador não encontrado');
     let pedido;
     try {
-      pedido = store.createFriendRequest(eu.id, alvo.id);
+      pedido = await store.createFriendRequest(eu.id, alvo.id);
     } catch (err) {
       traduzErroStore(err);
     }
-    pedidosPendentes.set(pedido.id, pedido);
     return { status: 201, body: { requestId: pedido.id } };
   }
 
   async function aceitarAmizade(req) {
-    const { user: eu } = exigirSessao(req, store);
+    const { user: eu } = await exigirSessao(req, store);
     const corpo = await lerCorpoJson(req);
-    let atualizado;
     try {
-      atualizado = store.acceptFriendRequest(corpo.requestId, eu.id);
+      await store.acceptFriendRequest(corpo.requestId, eu.id);
     } catch (err) {
       traduzErroStore(err);
     }
-    pedidosPendentes.delete(atualizado.id); // já não está pendente
     return { status: 200, body: { ok: true } };
   }
 
-  function listar(req) {
-    const { user: eu } = exigirSessao(req, store);
-    const friends = store.listFriends(eu.id).map(utilizadorPublico);
-    const pendentes = [...pedidosPendentes.values()];
-    const pendingIn = pendentes
-      .filter((p) => p.toId === eu.id)
-      .map((p) => ({
-        id: p.id,
-        from: utilizadorPublico(store.getUserById(p.fromId)),
-        createdAt: p.createdAt,
-      }));
-    const pendingOut = pendentes
-      .filter((p) => p.fromId === eu.id)
-      .map((p) => ({
-        id: p.id,
-        to: utilizadorPublico(store.getUserById(p.toId)),
-        createdAt: p.createdAt,
-      }));
-    return { status: 200, body: { friends, pendingIn, pendingOut } };
+  async function listar(req) {
+    const { user: eu } = await exigirSessao(req, store);
+    const friends = (await store.listFriends(eu.id)).map(utilizadorPublico);
+    const { pendingIn, pendingOut } = await store.listFriendRequests(eu.id);
+    return {
+      status: 200,
+      body: {
+        friends,
+        pendingIn: pendingIn.map((p) => ({
+          id: p.id,
+          from: { id: p.fromUserId, username: p.fromUsername },
+          createdAt: p.createdAt,
+        })),
+        pendingOut: pendingOut.map((p) => ({
+          id: p.id,
+          to: { id: p.toUserId, username: p.toUsername },
+          createdAt: p.createdAt,
+        })),
+      },
+    };
   }
 
   const ROTAS = {

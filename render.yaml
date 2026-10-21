@@ -1,0 +1,23 @@
+# Blueprint do Render — Machine Video Social (Task 11).
+#
+# Com este ficheiro no repositório, no Render basta "New +" → "Blueprint"
+# e escolher este repo: o serviço nasce já configurado (runtime Node,
+# comandos de build/arranque, plano Free). Só falta colar a DATABASE_URL
+# do Neon quando o Render pedir (variável marcada como sync: false).
+#
+# Docs: https://docs.render.com/blueprint-spec
+
+services:
+  - type: web
+    name: machine-video
+    runtime: node
+    plan: free
+    buildCommand: npm install --no-audit --no-fund
+    startCommand: npm start
+    envVars:
+      - key: DATABASE_URL
+        sync: false # colar no painel: string de ligação do Neon
+      - key: PORT
+        value: "3000"
+      - key: NODE_VERSION
+        value: "20"

@@ -8,9 +8,11 @@ const { createStoreMemory } = require('../src/store-memory');
 
 let http;
 let baseUrl;
+let store; // a mesma store do servidor — para semear estado diretamente (Task 11)
 
 before(async () => {
-  ({ http } = createServer({ store: createStoreMemory() }));
+  store = createStoreMemory();
+  ({ http } = createServer({ store }));
   await new Promise((resolve) => http.listen(0, '127.0.0.1', resolve));
   baseUrl = `http://127.0.0.1:${http.address().port}`;
 });
@@ -185,6 +187,44 @@ test('aceitar pedido cujo destinatario e outro utilizador responde 403', async (
   // E a amizade nao ficou criada por engano
   const corpoC = await (await jsonFetch('/api/friends', { token: c.token })).json();
   assert.deepStrictEqual(corpoC.friends, []);
+});
+
+test('GET /api/friends le pendentes da store: pedido criado fora do HTTP aparece (Task 11)', async () => {
+  const a = await registarELogar('amz_store_ana');
+  const b = await registarELogar('amz_store_bruno');
+
+  // Pedido criado DIRETAMENTE na store — simula o que sobrevive a um restart
+  // do servidor persistente: a rota HTTP deste processo nunca o registou no
+  // (antigo) Map local, por isso antes aparecia pendentes vazios enquanto a
+  // base de dados tinha a pendência (contradição com E_DUP).
+  store.createFriendRequest(a.userId, b.userId);
+
+  const listaB = await jsonFetch('/api/friends', { token: b.token });
+  assert.strictEqual(listaB.status, 200);
+  const corpoB = await listaB.json();
+  assert.strictEqual(corpoB.pendingIn.length, 1, 'B ve o pedido vindo da store');
+  assert.deepStrictEqual(corpoB.pendingIn[0].from, { id: a.userId, username: 'amz_store_ana' });
+
+  const listaA = await jsonFetch('/api/friends', { token: a.token });
+  const corpoA = await listaA.json();
+  assert.strictEqual(corpoA.pendingOut.length, 1, 'A ve o pedido enviado vindo da store');
+  assert.deepStrictEqual(corpoA.pendingOut[0].to, { id: b.userId, username: 'amz_store_bruno' });
+
+  // B aceita via HTTP → pendentes desaparecem em ambos (leitura da store)
+  const aceitar = await jsonFetch('/api/friends/accept', {
+    method: 'POST',
+    token: b.token,
+    body: { requestId: corpoB.pendingIn[0].id },
+  });
+  assert.strictEqual(aceitar.status, 200);
+
+  const finalA = await (await jsonFetch('/api/friends', { token: a.token })).json();
+  assert.deepStrictEqual(finalA.pendingOut, []);
+  assert.deepStrictEqual(finalA.friends, [{ id: b.userId, username: 'amz_store_bruno' }]);
+
+  const finalB = await (await jsonFetch('/api/friends', { token: b.token })).json();
+  assert.deepStrictEqual(finalB.pendingIn, []);
+  assert.deepStrictEqual(finalB.friends, [{ id: a.userId, username: 'amz_store_ana' }]);
 });
 
 test('pedido para username desconhecido responde 404', async () => {

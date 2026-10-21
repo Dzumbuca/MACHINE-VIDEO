@@ -57,14 +57,16 @@ function criarPresenca({ store }) {
   /**
    * Destinatários do aviso de presença do utilizador afetado: apenas amigos,
    * com a amizade confirmada nos dois sentidos antes de entregar.
-   * @returns {string[]} ids dos amigos a notificar
+   * Assíncrono porque a store pode ser a de Postgres (Task 11).
+   * @returns {Promise<string[]>} ids dos amigos a notificar
    */
-  function destinosPresenca(userId) {
+  async function destinosPresenca(userId) {
     const destinos = [];
     try {
-      for (const amigo of store.listFriends(userId)) {
+      const amigos = await store.listFriends(userId);
+      for (const amigo of amigos) {
         if (!amigo || typeof amigo.id !== 'string') continue;
-        if (store.areFriends(amigo.id, userId)) destinos.push(amigo.id);
+        if (await store.areFriends(amigo.id, userId)) destinos.push(amigo.id);
       }
     } catch {
       // store indisponível/não conforme: melhor não avisar ninguém do que

@@ -58,10 +58,14 @@ function criarHub({ store, wss, authTimeoutMs = TEMPO_LIMITE_AUTH_MS_PADRAO }) {
     }
   }
 
-  /** Difunde a presença do utilizador afetado — e só aos amigos dele. */
-  function anunciarPresenca(userId, online) {
+  /**
+   * Difunde a presença do utilizador afetado — e só aos amigos dele.
+   * Assíncrona (a store pode ser a de Postgres, Task 11); nunca lança —
+   * os destinos vêm de destinosPresenca, que engole falhas da store.
+   */
+  async function anunciarPresenca(userId, online) {
     const envelope = { type: 'presence', userId, online: Boolean(online) };
-    for (const destino of presenca.destinosPresenca(userId)) {
+    for (const destino of await presenca.destinosPresenca(userId)) {
       enviarPara(destino, envelope);
     }
   }
@@ -111,16 +115,14 @@ function criarHub({ store, wss, authTimeoutMs = TEMPO_LIMITE_AUTH_MS_PADRAO }) {
       if (eraUltima) anunciarPresenca(estado.user.id, false);
     });
 
-    ws.on('message', (dados) => {
-      let envelope;
-      try {
-        envelope = JSON.parse(dados.toString());
-      } catch {
-        enviarDireto(ws, { type: 'error', code: 'E_BADJSON' });
-        if (!estado.autenticado) fechar(ws); // sem auth não há segunda hipótese
-        return;
-      }
+    // Envelopes do MESMO socket são tratados EM SÉRIE, pela ordem de chegada:
+    // com a store-pg (assíncrona, Task 11), tratar em paralelo podia trocar a
+    // ordem das respostas/efeitos que o cliente vê para os seus próprios
+    // pedidos. A store em memória mantém o comportamento síncrono anterior.
+    let cadeia = Promise.resolve();
 
+    /** Trata um envelope já parseado — auth ou um tipo pós-auth. */
+    async function tratarEnvelope(envelope) {
       if (!estado.autenticado) {
         // Só {type:"auth", token} mantém a ligação viva; qualquer outro
         // envelope (ou payload malformado) fecha-a em silêncio.
@@ -133,7 +135,7 @@ function criarHub({ store, wss, authTimeoutMs = TEMPO_LIMITE_AUTH_MS_PADRAO }) {
         }
         let user = null;
         try {
-          user = store.getUserByToken(token);
+          user = await store.getUserByToken(token);
         } catch {
           user = null; // store indisponível trata-se como token inválido
         }
@@ -141,6 +143,7 @@ function criarHub({ store, wss, authTimeoutMs = TEMPO_LIMITE_AUTH_MS_PADRAO }) {
           fechar(ws); // token inválido → fechado, sem resposta
           return;
         }
+        if (ws.readyState !== ws.OPEN) return; // fechou entretanto
         estado.autenticado = true;
         estado.user = user;
         clearTimeout(temporizador);
@@ -156,9 +159,9 @@ function criarHub({ store, wss, authTimeoutMs = TEMPO_LIMITE_AUTH_MS_PADRAO }) {
       let tratado = false;
       try {
         tratado =
-          chat.handleEnvelope(envelope, estado.user, ws) ||
-          sinal.handleEnvelope(envelope, estado.user, ws) ||
-          sessoes.handleEnvelope(envelope, estado.user, ws);
+          (await chat.handleEnvelope(envelope, estado.user, ws)) ||
+          (await sinal.handleEnvelope(envelope, estado.user, ws)) ||
+          (await sessoes.handleEnvelope(envelope, estado.user, ws));
       } catch {
         // O handler não devia lançar; se lançar, o processo não pode morrer.
         tratado = true;
@@ -167,6 +170,24 @@ function criarHub({ store, wss, authTimeoutMs = TEMPO_LIMITE_AUTH_MS_PADRAO }) {
       if (!tratado) {
         enviarDireto(ws, { type: 'error', code: 'E_UNKNOWN_TYPE' });
       }
+    }
+
+    ws.on('message', (dados) => {
+      let envelope;
+      try {
+        envelope = JSON.parse(dados.toString());
+      } catch {
+        enviarDireto(ws, { type: 'error', code: 'E_BADJSON' });
+        if (!estado.autenticado) fechar(ws); // sem auth não há segunda hipótese
+        return;
+      }
+      cadeia = cadeia
+        .then(() => tratarEnvelope(envelope))
+        .catch(() => {
+          // Última rede de segurança: nenhum erro de tratamento pode matar
+          // a cadeia (nem os envelopes seguintes deste socket).
+          enviarDireto(ws, { type: 'error', code: 'E_INTERNAL' });
+        });
     });
   });
 

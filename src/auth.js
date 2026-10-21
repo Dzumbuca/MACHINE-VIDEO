@@ -71,7 +71,7 @@ function createAuthHandlers({ store }) {
     const passHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
     const secAHash = await bcrypt.hash(secAnswer, BCRYPT_ROUNDS);
     try {
-      const user = store.createUser({ username, passHash, secQ: secQuestion, secA: secAHash });
+      const user = await store.createUser({ username, passHash, secQ: secQuestion, secA: secAHash });
       return { status: 200, body: { userId: user.id } };
     } catch (err) {
       if (err instanceof StoreError && err.code === 'E_DUP') {
@@ -87,24 +87,24 @@ function createAuthHandlers({ store }) {
     if (typeof username !== 'string' || typeof password !== 'string') {
       falha(400, 'Pedido inválido');
     }
-    const user = store.getUserByUsername(username);
+    const user = await store.getUserByUsername(username);
     const ok =
       user !== null &&
       typeof user.passHash === 'string' &&
       (await bcrypt.compare(password, user.passHash));
     if (!ok) falha(401, 'Credenciais inválidas');
-    const token = store.createSession(user.id);
+    const token = await store.createSession(user.id);
     return { status: 200, body: { token, user: utilizadorPublico(user) } };
   }
 
-  function logout(req) {
-    const { token } = exigirSessao(req, store);
-    store.deleteSession(token);
+  async function logout(req) {
+    const { token } = await exigirSessao(req, store);
+    await store.deleteSession(token);
     return { status: 200, body: { ok: true } };
   }
 
-  function perfil(req) {
-    const { user } = exigirSessao(req, store);
+  async function perfil(req) {
+    const { user } = await exigirSessao(req, store);
     return { status: 200, body: { user: utilizadorPublico(user) } };
   }
 
@@ -115,13 +115,13 @@ function createAuthHandlers({ store }) {
     if (typeof username !== 'string' || typeof secAnswer !== 'string') {
       falha(400, 'Pedido inválido');
     }
-    const user = store.getUserByUsername(username);
+    const user = await store.getUserByUsername(username);
     if (!user) falha(404, 'Utilizador não encontrado');
     const respostaOk =
       typeof user.secA === 'string' && (await bcrypt.compare(secAnswer, user.secA));
     if (!respostaOk) falha(401, 'Resposta de segurança incorreta');
     const passHash = await bcrypt.hash(novaSenha, BCRYPT_ROUNDS);
-    store.updateUserPassword(user.id, passHash);
+    await store.updateUserPassword(user.id, passHash);
     return { status: 200, body: { ok: true } };
   }
 

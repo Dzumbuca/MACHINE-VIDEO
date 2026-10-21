@@ -76,13 +76,13 @@ function createChatHandlers({ store, enviarDireto, enviarPara }) {
   // --- REST -----------------------------------------------------------------
 
   async function listarConversas(req) {
-    const { user: eu } = exigirSessao(req, store);
-    const conversations = store.listConversations(eu.id);
+    const { user: eu } = await exigirSessao(req, store);
+    const conversations = await store.listConversations(eu.id);
     return { status: 200, body: { conversations } };
   }
 
   async function criarConversa(req) {
-    const { user: eu } = exigirSessao(req, store);
+    const { user: eu } = await exigirSessao(req, store);
     const corpo = await lerCorpoJson(req);
     if (!corpo || typeof corpo !== 'object' || Array.isArray(corpo)) {
       falha(400, 'Corpo inválido');
@@ -102,8 +102,8 @@ function createChatHandlers({ store, enviarDireto, enviarPara }) {
     // membros têm de ser amigos dela.
     for (const memberId of corpo.memberIds) {
       if (memberId === eu.id) continue;
-      if (!store.getUserById(memberId)) falha(404, 'Utilizador não encontrado');
-      if (!store.areFriends(eu.id, memberId)) falha(403, 'Todos os membros têm de ser amigos');
+      if (!(await store.getUserById(memberId))) falha(404, 'Utilizador não encontrado');
+      if (!(await store.areFriends(eu.id, memberId))) falha(403, 'Todos os membros têm de ser amigos');
     }
 
     const memberIds = [...new Set([eu.id, ...corpo.memberIds])];
@@ -113,7 +113,7 @@ function createChatHandlers({ store, enviarDireto, enviarPara }) {
 
     let conv;
     try {
-      conv = store.createConversation(memberIds, isGroup, title);
+      conv = await store.createConversation(memberIds, isGroup, title);
     } catch (err) {
       traduzErroStore(err);
     }
@@ -121,11 +121,11 @@ function createChatHandlers({ store, enviarDireto, enviarPara }) {
   }
 
   async function listarMensagens(req, conversationId) {
-    const { user: eu } = exigirSessao(req, store);
+    const { user: eu } = await exigirSessao(req, store);
 
     // Autorização primeiro: a store não protege a leitura de mensagens. Uma
     // conversa desconhecida também é "não sou membro" (403), como no WS.
-    if (!store.isMember(conversationId, eu.id)) {
+    if (!(await store.isMember(conversationId, eu.id))) {
       falha(403, 'Não é membro da conversa');
     }
 
@@ -135,7 +135,7 @@ function createChatHandlers({ store, enviarDireto, enviarPara }) {
 
     let messages;
     try {
-      messages = store.listMessages(conversationId, limit, beforeId);
+      messages = await store.listMessages(conversationId, limit, beforeId);
     } catch (err) {
       traduzErroStore(err); // rede de segurança: E_NOTFOUND→404, etc.
     }
@@ -190,8 +190,9 @@ function createChatHandlers({ store, enviarDireto, enviarPara }) {
    * Trata um envelope pós-auth do chat. Devolve true se o tipo pertence ao
    * chat (tratado, com sucesso ou com erro); false deixa o hub responder
    * E_UNKNOWN_TYPE. Nunca lança: qualquer falha da store vira erro ao socket.
+   * Assíncrono porque a store pode ser a de Postgres (Task 11).
    */
-  function handleEnvelope(envelope, user, ws) {
+  async function handleEnvelope(envelope, user, ws) {
     if (!envelope || typeof envelope !== 'object' || envelope.type !== 'chat_send') {
       return false;
     }
@@ -203,21 +204,21 @@ function createChatHandlers({ store, enviarDireto, enviarPara }) {
 
     // Membro da conversa? (conversa inexistente ou id malformado → também
     // não é membro; a ligação mantém-se viva.)
-    if (!store.isMember(envelope.conversationId, user.id)) {
+    if (!(await store.isMember(envelope.conversationId, user.id))) {
       enviarDireto(ws, { type: 'error', code: 'E_FORBIDDEN' });
       return true;
     }
 
     // Membros da conversa para a difusão (o contrato não expõe getConversation;
     // como é membro, a conversa está em listConversations).
-    const conv = store
-      .listConversations(user.id)
-      .find((c) => c.id === envelope.conversationId);
+    const conv = (await store.listConversations(user.id)).find(
+      (c) => c.id === envelope.conversationId,
+    );
     const memberIds = conv ? conv.memberIds : [user.id];
 
     let msg;
     try {
-      msg = store.appendMessage(envelope.conversationId, user.id, envelope.text);
+      msg = await store.appendMessage(envelope.conversationId, user.id, envelope.text);
     } catch (err) {
       const codigo = err instanceof StoreError ? err.code : 'E_INTERNAL';
       enviarDireto(ws, { type: 'error', code: codigo });

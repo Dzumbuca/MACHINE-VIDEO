@@ -70,13 +70,15 @@ function utilizadorPublico(user) {
   return { id: user.id, username: user.username };
 }
 
-/** Devolve { token, user } da sessão Bearer; 401 sem sessão ou inválida. */
-function exigirSessao(req, store) {
+/** Devolve { token, user } da sessão Bearer; 401 sem sessão ou inválida.
+ * Assíncrono porque a store pode ser a de Postgres (Task 11) — com a store
+ * em memória o `await` é um no-op. */
+async function exigirSessao(req, store) {
   const header = req.headers.authorization || '';
   const correspondencia = /^Bearer\s+(.+)$/i.exec(header);
   if (!correspondencia) falha(401, 'Sessão em falta ou inválida');
   const token = correspondencia[1].trim();
-  const user = store.getUserByToken(token);
+  const user = await store.getUserByToken(token);
   if (!user) falha(401, 'Sessão em falta ou inválida');
   return { token, user };
 }

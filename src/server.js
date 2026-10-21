@@ -28,13 +28,38 @@ function createServer({ store } = {}) {
 
 if (require.main === module) {
   const port = process.env.PORT || 3000;
-  // O arranque direto (npm start) usa a store em memória — sem ela, todas as
-  // rotas de API falhariam e a interface web seria inutilizável.
-  const { createStoreMemory } = require('./store-memory');
-  const { http } = createServer({ store: createStoreMemory() });
-  http.listen(port, () => {
-    console.log(`Machine Video a escutar em http://localhost:${port}`);
-  });
+  // A store escolhe-se pelo ambiente (src/db.js): com DATABASE_URL usa
+  // PostgreSQL (dados persistem); sem, mantém a memória dos testes locais.
+  const { selecionarStore } = require('./db');
+
+  selecionarStore()
+    .then(({ store, usandoPg }) => {
+      const { http, attach } = createServer({ store });
+      // O hub WebSocket (presença, sessões de filme e chamadas — tarefas 5–8)
+      // tem de estar montado no arranque; os testes chamam attach() à parte.
+      const wss = attach();
+      http.listen(port, () => {
+        const onde = usandoPg ? 'Postgres' : 'memória';
+        console.log(`Machine Video a escutar em http://localhost:${port} (store: ${onde})`);
+      });
+
+      // Render/infra mandam SIGTERM ao reiniciar o serviço: fecha WS, HTTP e
+      // a ligação à base de dados antes de sair.
+      async function encerrar() {
+        wss.close();
+        http.close();
+        if (typeof store.close === 'function') await store.close();
+        process.exit(0);
+      }
+      process.on('SIGTERM', () => encerrar().catch(() => process.exit(0)));
+      process.on('SIGINT', () => encerrar().catch(() => process.exit(0)));
+    })
+    .catch((erro) => {
+      // Ex.: DATABASE_URL mal formada ou Postgres inalcançável — falha visível
+      // no arranque, não um servidor "vivo" com a API avariada.
+      console.error('Falha ao arrancar o servidor:', erro.message);
+      process.exit(1);
+    });
 }
 
 module.exports = { createServer };
