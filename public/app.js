@@ -6,18 +6,18 @@
  * zona principal swapável e um único WsClient (reconexão automática) que
  * entrega presenças e mensagens em tempo real.
  *
- * GANCHO PARA A TASK 10 (chamadas e sessões de filme):
- *   - window.MV dá acesso a { api, obterWs, obterEstado, abrirConversa,
- *     montarVistaPrincipal, vistaConversa, aoSair };
- *   - o WsClient despacha por tipo: `ws.on('call_invite', fn)`,
- *     `ws.on('movie_state', fn)`… adicionam handlers sem tocar neste ficheiro;
- *   - `montarVistaPrincipal(nodo)` troca a zona principal por outra vista.
+ * INTEGRAÇÃO DA TASK 10 (chamadas e sessões de filme):
+ *   - call.js e movie.js registam-se no WsClient atual (ligarWs) e montam as
+ *     suas vistas com montarVistaPrincipal; o chip flutuante permite voltar;
+ *   - os botões "Chamar" e "Sessão de filme" ficam no cabeçalho da conversa.
  */
 
 import { api, lerToken } from './api.js';
 import { WsClient } from './ws.js';
 import { montarAuth, reporAuth } from './ui/auth.js';
 import * as vistas from './ui/views.js';
+import { iniciarChamadas } from './call.js';
+import { iniciarSessoesFilme } from './movie.js';
 
 const $ = (id) => document.getElementById(id);
 const LIMITE_MENSAGENS = 50;
@@ -135,6 +135,7 @@ function ligarWs() {
     if (refsConversa) vistas.definirEstadoWs(refsConversa, s);
     if (s === 'dead') sessaoMorta();
   });
+  iniciarChamadas(); iniciarSessoesFilme(); // Task 10: registam handlers no ws novo
   ws.connect(lerToken());
 }
 
@@ -417,6 +418,19 @@ function montarVista(convId) {
     enviarMensagem(convId);
   });
   refsConversa.campo.focus();
+  acoesConversa(refsConversa, conv);
+}
+
+/** Botões "Chamar" e "Sessão de filme" no cabeçalho da conversa (Task 10). */
+function acoesConversa(refs, conv) {
+  const zona = document.createElement('div');
+  zona.className = 'chat-acoes';
+  for (const [rotulo, acao] of [['Chamar', 'chamarDaConversa'], ['Sessão de filme', 'criarSessaoFilme']]) {
+    const btn = Object.assign(document.createElement('button'), { type: 'button', className: 'btn btn-soft btn-sm', textContent: rotulo });
+    btn.addEventListener('click', () => window.MV[acao]?.(conv));
+    zona.appendChild(btn);
+  }
+  refs.pill.after(zona);
 }
 
 function fecharConversa() {

@@ -1,0 +1,165 @@
+/* ui/filme.css — Sessão de Filme (Task 10). Tema escuro do shell; desktop-first; ficheiro abaixo de 500 linhas. */
+
+/* ---- vista da sessão ------------------------------------------------------------ */
+
+.filme {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.filme-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.7rem 1rem;
+  border-bottom: 1px solid var(--line);
+  background: rgba(18, 21, 29, 0.85);
+  backdrop-filter: blur(6px);
+}
+
+.filme-ident {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.filme-titulo {
+  font-size: 1rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filme-ficha {
+  font-size: 0.76rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- palco do vídeo --------------------------------------------------------------- */
+
+.filme-palco {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  background: #05070b;
+  padding: 0.9rem 1rem;
+}
+
+.filme-video {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  background: #000;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+}
+
+.filme-so-conversa {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: center;
+  text-align: center;
+  max-width: 460px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.filme-modo-titulo {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* ---- controles ----------------------------------------------------------------------- */
+
+.filme-controles {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  padding: 0.7rem 1rem;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.filme-nota-host {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.filme-tempo {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+  color: var(--muted);
+  min-width: 118px;
+  text-align: center;
+}
+
+.filme-barra {
+  flex: 1;
+  min-width: 120px;
+  accent-color: var(--accent);
+}
+
+/* ---- participantes ----------------------------------------------------------------------- */
+
+.filme-membros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.6rem 1rem;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+  max-height: 96px;
+  overflow-y: auto;
+}
+
+.filme-membro {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.22rem 0.65rem;
+  border-radius: 999px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.filme-ficheiro {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--faint);
+}
+
+.filme-ficheiro.on {
+  color: var(--ok);
+}
+
+/* sem ficheiro: palco mais discreto */
+
+.filme.sem-ficheiro .filme-palco {
+  background: var(--bg);
+}
+
+/* ---- telemóvel ------------------------------------------------------------------------------- */
+
+@media (max-width: 760px) {
+  .filme-head {
+    flex-wrap: wrap;
+  }
+
+  .filme-tempo {
+    min-width: 0;
+  }
+}

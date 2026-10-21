@@ -1,0 +1,498 @@
+/**
+ * movie.js — Sessão de Filme (Task 10).
+ *
+ * Sincronia anfitrião-autoritativa (envelopes da Task 8, src/session.js). O
+ * anfitrião escolhe um ficheiro LOCAL (MP4/WebM → URL.createObjectURL; o
+ * ficheiro NUNCA viaja pelo WS, só metadados) e controla a reprodução com
+ * session_control {play|pause|seek, positionSec, atMs}. O convidado aceita o
+ * convite num único diálogo onde escolhe o SEU ficheiro: nome + duração
+ * (±2 s) comparados com os do anfitrião — divergência avisa mas permite
+ * entrar; sem ficheiro → modo "só conversa". Drift (convidado, a cada 2 s):
+ * se o currentTime divergir ≥1,5 s da posição esperada (positionSec +
+ * decorrido desde atMs quando a tocar), faz seek para essa posição — o
+ * anfitrião é a fonte da verdade; convidados NÃO têm controles. Formato não
+ * suportado (MKV/AVI): o <video> falha o load (evento error) → aviso PT.
+ * Reutiliza ajudantes de UI de call.js.
+ */
+
+import { toast } from './ui/views.js';
+import { mostrarChip, removerChip, abrirModal, botao, nodo, restaurarZonaPrincipal } from './call.js';
+
+const INTERVALO_DRIFT_MS = 2000;
+const TOLERANCIA_DRIFT_S = 1.5;
+const TOLERANCIA_DURACAO_S = 2;
+const ACOES = new Set(['play', 'pause', 'seek']);
+const AVISO_FORMATO =
+  'Formato de vídeo não suportado — use MP4 ou WebM. O navegador não conseguiu ler o ficheiro; ' +
+  'converta-o (por exemplo, para MP4 H.264) e tente novamente.';
+let ws = null;
+let euId = null;
+let sessao = null; // sessão ativa nesta aba, ou null
+const soltarHandlers = []; // anulam os handlers registados no WsClient atual
+
+// ---- ajudantes puros (verificados pelos testes do cliente) ---------------------
+
+/** Duração legível: 3725 → "1:02:05", 154 → "2:34", inválido → "—". */
+export function rotuloDuracao(segundos) {
+  if (typeof segundos !== 'number' || !Number.isFinite(segundos) || segundos < 0) return '—';
+  const total = Math.round(segundos);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const dois = (n) => String(n).padStart(2, '0');
+  return h > 0 ? `${h}:${dois(m)}:${dois(s)}` : `${m}:${dois(s)}`;
+}
+
+/** Compara o ficheiro local com o do anfitrião: {fileMatches, divergencias[]}. */
+export function avaliarFicheiro(meu, anfitriao) {
+  const divergencias = [];
+  if (String(meu?.nome ?? '').trim().toLowerCase() !== String(anfitriao?.nome ?? '').trim().toLowerCase()) {
+    divergencias.push(`Nome diferente — o seu: "${meu?.nome ?? '?'}", o do anfitrião: "${anfitriao?.nome ?? '?'}".`);
+  }
+  const dMeu = meu?.duracaoSec;
+  const dDele = anfitriao?.duracaoSec;
+  if (typeof dMeu !== 'number' || typeof dDele !== 'number' || Math.abs(dMeu - dDele) > TOLERANCIA_DURACAO_S) {
+    divergencias.push(
+      `Duração diferente — a sua: ${rotuloDuracao(dMeu)}, a do anfitrião: ${rotuloDuracao(dDele)} (tolerância ±2 s).`,
+    );
+  }
+  return { fileMatches: divergencias.length === 0, divergencias };
+}
+
+/** Posição esperada AGORA: positionSec + tempo decorrido quando a tocar. */
+export function esperadoPosicao(ultimo, agoraMs) {
+  if (!ultimo || typeof ultimo.positionSec !== 'number' || !Number.isFinite(ultimo.positionSec)) return 0;
+  if (ultimo.action !== 'play') return ultimo.positionSec;
+  const agora = typeof agoraMs === 'number' ? agoraMs : Date.now();
+  const inicio = typeof ultimo.atMs === 'number' ? ultimo.atMs : agora;
+  return ultimo.positionSec + Math.max(0, agora - inicio) / 1000;
+}
+
+/** |atual − esperada| em segundos; 0 sem controlo conhecido ou valor inválido. */
+export function driftSegundos(atual, ultimo, agoraMs) {
+  if (typeof atual !== 'number' || !Number.isFinite(atual)) return 0;
+  return Math.abs(atual - esperadoPosicao(ultimo, agoraMs));
+}
+
+// ---- arranque -------------------------------------------------------------------
+
+/** Liga o módulo ao WsClient atual e publica o gancho MV.criarSessaoFilme. */
+export function iniciarSessoesFilme() {
+  const MV = globalThis.window?.MV;
+  const cliente = MV?.obterWs?.();
+  const utilizador = MV?.obterEstado?.()?.utilizador;
+  if (!cliente || !utilizador) return;
+  if (cliente === ws && euId === utilizador.id) return; // já ligado a esta sessão
+  for (const soltar of soltarHandlers) soltar();
+  soltarHandlers.length = 0;
+  ws = cliente;
+  euId = utilizador.id;
+  for (const [tipo, fn] of [
+    ['session_created', aoCreated], ['session_invite', aoInvite], ['session_member', aoMember],
+    ['session_control', aoControl], ['session_ended', aoEnded], ['error', aoErro],
+  ]) soltarHandlers.push(ws.on(tipo, fn));
+  MV.criarSessaoFilme = iniciarDaConversa;
+  MV.aoSair?.(() => { if (sessao) terminarSessao(); });
+}
+
+// ---- utilitários -------------------------------------------------------------------
+
+function nomeDe(id) {
+  return globalThis.window?.MV?.obterEstado?.()?.amigos?.get(id)?.username ?? 'Participante';
+}
+function euNome() {
+  return globalThis.window?.MV?.obterEstado?.()?.utilizador?.username ?? 'Você';
+}
+function novaSessao(parcial) {
+  return {
+    id: parcial.id, papel: parcial.papel,
+    titulo: parcial.titulo ?? 'Sessão de filme', fileName: parcial.fileName ?? '',
+    durationSec: parcial.durationSec ?? 0, convId: parcial.convId ?? null,
+    ficheiro: parcial.ficheiro ?? null, objectUrl: null,
+    fileMatches: Boolean(parcial.fileMatches), membros: new Map(),
+    ultimoControle: null, refs: null, chip: null, timer: null, avisouAutoplay: false,
+  };
+}
+
+/** Mede nome/duração de um File local; null quando o navegador não o lê. */
+function prepararFicheiro(file) {
+  return new Promise((resolve) => {
+    const v = nodo('video');
+    v.preload = 'metadata';
+    const url = URL.createObjectURL(file);
+    let decidido = false;
+    const falha = () => { if (decidido) return; decidido = true; URL.revokeObjectURL(url); resolve(null); };
+    v.onerror = falha; // MKV/AVI: o <video> falha o load → aviso de formato
+    v.onloadedmetadata = () => {
+      if (decidido) return;
+      decidido = true;
+      const d = v.duration;
+      URL.revokeObjectURL(url);
+      resolve(Number.isFinite(d) && d > 0 ? { nome: file.name, duracaoSec: d, file } : null);
+    };
+    v.src = url;
+  });
+}
+
+/** Campo de escolha de ficheiro com o filtro MP4/WebM do enunciado. */
+const campoFicheiro = () => Object.assign(nodo('input', 'input'), { type: 'file', accept: 'video/mp4,video/webm' });
+
+// ---- anfitrião: criar a sessão ------------------------------------------------------
+
+function iniciarDaConversa(conv) {
+  if (sessao) return toast('Já está numa sessão de filme — saia dela primeiro.', 'erro');
+  const convidados = (conv?.memberIds ?? []).filter((id) => id !== euId);
+  if (convidados.length === 0) return toast('Não há ninguém para convidar nesta conversa.', 'erro');
+  abrirModalAnfitriao(conv, convidados);
+}
+
+function abrirModalAnfitriao(conv, convidados) {
+  const campoTitulo = Object.assign(nodo('input', 'input'), { maxLength: 60, placeholder: 'Título da sessão (opcional)' });
+  const campo = campoFicheiro();
+  const ficha = nodo('p', 'hint');
+  const aviso = nodo('p', 'form-erro');
+  aviso.hidden = true;
+  const rotuloTitulo = nodo('label', 'label', 'Título');
+  rotuloTitulo.appendChild(campoTitulo);
+  const rotuloFicheiro = nodo('label', 'label', 'Ficheiro do filme (MP4 ou WebM)');
+  rotuloFicheiro.append(campo, ficha);
+  const nota = nodo('p', 'form-nota', `Convida: ${convidados.map((id) => nomeDe(id)).join(', ')}`);
+  const criar = botao('Criar sessão', 'btn btn-primary');
+  const modal = abrirModal({
+    titulo: 'Sessão de filme',
+    corpo: [rotuloTitulo, rotuloFicheiro, aviso, nota],
+    acoes: [botao('Cancelar'), criar],
+  });
+  criar.disabled = true;
+  let medido = null;
+  campo.addEventListener('change', async () => {
+    const file = campo.files?.[0];
+    medido = file ? await prepararFicheiro(file) : null;
+    if (!medido) {
+      aviso.hidden = false;
+      aviso.textContent = AVISO_FORMATO; // o <video> falhou o load do ficheiro
+      ficha.textContent = '';
+      criar.disabled = true;
+      return;
+    }
+    aviso.hidden = true;
+    ficha.textContent = `${medido.nome} — ${rotuloDuracao(medido.duracaoSec)}`;
+    criar.disabled = false;
+  });
+  criar.addEventListener('click', () => {
+    if (!medido) return;
+    sessao = novaSessao({
+      papel: 'anfitriao', id: null, titulo: campoTitulo.value.trim() || medido.nome,
+      fileName: medido.nome, durationSec: medido.duracaoSec, convId: conv.id,
+      ficheiro: medido.file, fileMatches: true,
+    });
+    modal.fechar();
+    const ok = ws?.send({
+      type: 'session_create', title: sessao.titulo, fileName: sessao.fileName, durationSec: sessao.durationSec, toUserIds: convidados,
+    });
+    if (!ok) {
+      toast('Sem ligação ao servidor — a sessão não foi criada.', 'erro');
+      sessao = null;
+    }
+  });
+}
+
+function aoCreated(envelope) {
+  if (!sessao || sessao.papel !== 'anfitriao' || sessao.id) return;
+  if (typeof envelope.sessionId !== 'string') return;
+  sessao.id = envelope.sessionId;
+  if (typeof envelope.title === 'string') sessao.titulo = envelope.title;
+  if (typeof envelope.fileName === 'string') sessao.fileName = envelope.fileName;
+  if (typeof envelope.durationSec === 'number') sessao.durationSec = envelope.durationSec;
+  sessao.membros.set(euId, { username: euNome(), fileMatches: true });
+  montarVista();
+}
+
+// ---- convidado: convite único (informação + ficheiro + entrar) ------------------------
+
+function aoInvite(invite) {
+  const { sessionId, fromName, title, fileName, durationSec } = invite;
+  if (typeof sessionId !== 'string' || sessao) return; // já numa sessão — convite ignorado
+  const campo = campoFicheiro();
+  const resultado = nodo('p', 'hint');
+  const aviso = nodo('p', 'form-erro');
+  aviso.hidden = true;
+  const rotulo = nodo('label', 'label', 'O seu ficheiro local (MP4 ou WebM) — opcional');
+  rotulo.append(campo, resultado);
+  const entrar = botao('Entrar', 'btn btn-primary');
+  entrar.disabled = true;
+  let medido = null;
+  const modal = abrirModal({
+    titulo: 'Convite para sessão de filme',
+    corpo: [
+      nodo('p', '', `${fromName ?? 'Um amigo'} convidou-o para ver "${title ?? 'um filme'}".`),
+      nodo('p', 'hint', `Ficheiro do anfitrião: ${fileName ?? '?'} — ${rotuloDuracao(durationSec)}`),
+      rotulo, aviso,
+    ],
+    acoes: [
+      botao('Recusar', 'btn', () => modal.fechar()), // v1 sem recusa no protocolo: silencioso
+      botao('Entrar sem ficheiro', 'btn', () => {
+        modal.fechar();
+        juntar(invite, null, false);
+      }),
+      entrar,
+    ],
+    bloqFora: true,
+  });
+  campo.addEventListener('change', async () => {
+    const file = campo.files?.[0];
+    medido = file ? await prepararFicheiro(file) : null;
+    if (!medido) {
+      aviso.hidden = false;
+      aviso.textContent = AVISO_FORMATO;
+      resultado.textContent = 'Pode entrar sem ficheiro (modo só conversa) ou escolher outro.';
+      entrar.dataset.modo = 'sem';
+      entrar.disabled = false;
+      return;
+    }
+    aviso.hidden = true;
+    const analise = avaliarFicheiro(medido, { nome: fileName, duracaoSec: durationSec });
+    if (analise.fileMatches) {
+      resultado.textContent = `Ficheiro compatível ✓ — ${medido.nome} (${rotuloDuracao(medido.duracaoSec)}).`;
+    } else {
+      aviso.textContent = ['O ficheiro pode não ser o mesmo do anfitrião:', ...analise.divergencias].join(' ');
+      aviso.hidden = false;
+      resultado.textContent = 'Pode entrar na mesma, mas o vídeo pode dessincronizar.';
+    }
+    entrar.dataset.modo = 'com';
+    entrar.disabled = false;
+  });
+  entrar.addEventListener('click', () => {
+    modal.fechar();
+    if (entrar.dataset.modo === 'com' && medido) juntar(invite, medido, true);
+    else juntar(invite, null, false);
+  });
+}
+function juntar(invite, ficheiro, fileMatches) {
+  sessao = novaSessao({
+    papel: 'convidado', id: invite.sessionId, titulo: invite.title,
+    fileName: invite.fileName, durationSec: invite.durationSec, convId: null,
+    ficheiro: ficheiro?.file ?? null, fileMatches,
+  });
+  if (!ws?.send({ type: 'session_join', sessionId: sessao.id, fileMatches })) {
+    toast('Sem ligação ao servidor — não entrou na sessão.', 'erro');
+    sessao = null;
+    return;
+  }
+  montarVista();
+}
+// ---- envelopes de estado e controlo ----------------------------------------------------
+
+function aoMember(envelope) {
+  if (!sessao || envelope.sessionId !== sessao.id || typeof envelope.userId !== 'string') return;
+  sessao.membros.set(envelope.userId, {
+    username: envelope.username ?? nomeDe(envelope.userId),
+    fileMatches: Boolean(envelope.fileMatches),
+  });
+  if (envelope.userId === euId) sessao.fileMatches = Boolean(envelope.fileMatches);
+  atualizarMembros();
+}
+function aoControl(envelope) {
+  if (!sessao || envelope.sessionId !== sessao.id) return;
+  const { action, positionSec, atMs } = envelope;
+  if (!ACOES.has(action) || typeof positionSec !== 'number' || typeof atMs !== 'number') return;
+  sessao.ultimoControle = { action, positionSec, atMs };
+  aplicarNoVideo(action, positionSec);
+}
+
+/** Aplica um controlo ao <video> local (anfitrião incluído — eco idempotente). */
+function aplicarNoVideo(action, positionSec) {
+  const v = sessao?.refs?.video;
+  if (!v) return;
+  if (action === 'seek') { v.currentTime = positionSec; return; }
+  if (action === 'pause') {
+    v.pause();
+    if (Math.abs(v.currentTime - positionSec) > 0.3) v.currentTime = positionSec;
+    return;
+  }
+  if (Math.abs(v.currentTime - positionSec) > 0.3) v.currentTime = positionSec;
+  v.play?.()?.catch?.(() => {
+    if (sessao?.avisouAutoplay) return;
+    sessao.avisouAutoplay = true;
+    toast('Toque no vídeo para autorizar a reprodução com som.', 'info');
+  });
+}
+function aoEnded(envelope) {
+  if (!sessao || envelope.sessionId !== sessao.id) return;
+  terminarSessao('O anfitrião encerrou a sessão de filme.', false);
+}
+function aoErro(envelope) {
+  if (!sessao) return;
+  const codigos = {
+    E_INVALID: 'Pedido de sessão inválido.',
+    E_NOTFOUND: 'A sessão de filme já não existe.',
+    E_FORBIDDEN: 'Não tem permissão para essa ação na sessão.',
+    E_NOT_HOST: 'Apenas o anfitrião controla a reprodução.',
+    E_INTERNAL: 'Erro interno do servidor.',
+  };
+  const texto = codigos[envelope.code];
+  if (texto) toast(texto, 'erro');
+}
+// ---- vista da sessão --------------------------------------------------------------------
+
+function montarVista() {
+  const MV = globalThis.window?.MV;
+  const doc = globalThis.document;
+  const ficha = nodo('p', 'filme-ficha');
+  ficha.textContent = `${sessao.fileName} · ${rotuloDuracao(sessao.durationSec)} · ${sessao.papel === 'anfitriao' ? 'você é o anfitrião' : 'convidado'}`;
+  const zonaTitulo = nodo('div', 'filme-ident');
+  zonaTitulo.append(nodo('h2', 'filme-titulo', sessao.titulo), ficha);
+  const verConversa = botao('Ver conversa', 'btn btn-ghost btn-sm', () => {
+    const ativa = MV?.obterEstado?.()?.ativa;
+    if (ativa) MV.abrirConversa(ativa);
+    else toast('Abra uma conversa na barra lateral para conversar.', 'info');
+  });
+  const sair = botao(sessao.papel === 'anfitriao' ? 'Terminar para todos' : 'Sair da sessão', 'btn btn-perigo btn-sm', pedirSaida);
+  const cabeca = nodo('header', 'filme-head');
+  cabeca.append(zonaTitulo, verConversa, sair);
+  const palco = nodo('div', 'filme-palco');
+  let video = null;
+  if (sessao.fileMatches && sessao.ficheiro) {
+    sessao.objectUrl = URL.createObjectURL(sessao.ficheiro);
+    video = nodo('video', 'filme-video');
+    video.playsInline = true;
+    video.src = sessao.objectUrl;
+    video.addEventListener('error', () => palco.replaceChildren(nodoAvisoFormato()));
+    palco.appendChild(video);
+  } else {
+    palco.appendChild(nodoSoConversa());
+  }
+  const controles = nodo('div', 'filme-controles');
+  const tempo = nodo('span', 'filme-tempo', `0:00 / ${rotuloDuracao(sessao.durationSec)}`);
+  const barra = montarControles(controles, video, tempo);
+  const membros = nodo('div', 'filme-membros');
+  membros.setAttribute('aria-label', 'Participantes da sessão');
+  const raiz = doc.createElement('div');
+  raiz.className = 'filme';
+  raiz.append(cabeca, palco, controles, membros);
+  sessao.refs = { raiz, video, tempo, barra, membros };
+  MV.montarVistaPrincipal(raiz);
+  sessao.chip = mostrarChip('🎬 Sessão de filme', () => MV.montarVistaPrincipal(sessao.refs.raiz));
+  atualizarMembros();
+  iniciarDrift();
+  // Um controlo recebido enquanto a vista não existia aplica-se logo ao entrar.
+  if (sessao.ultimoControle && video) {
+    video.addEventListener('loadedmetadata', () => {
+      if (sessao?.ultimoControle) aplicarNoVideo(sessao.ultimoControle.action, sessao.ultimoControle.positionSec);
+    }, { once: true });
+  }
+}
+
+/**
+ * Anfitrião: botões + barra de posição. Convidado: só a nota (sem controles).
+ * Devolve a barra de posição (ou null para o convidado).
+ */
+function montarControles(controles, video, tempo) {
+  const rotuloTempo = () => `${rotuloDuracao(video.currentTime)} / ${rotuloDuracao(sessao.durationSec)}`;
+  if (sessao.papel !== 'anfitriao') {
+    controles.append(nodo('span', 'filme-nota-host', 'A reprodução é controlada pelo anfitrião — não há controles aqui.'), tempo);
+    if (video) video.addEventListener('timeupdate', () => { tempo.textContent = rotuloTempo(); });
+    return null;
+  }
+  const barra = Object.assign(globalThis.document.createElement('input'), {
+    type: 'range', className: 'filme-barra', min: '0', max: String(sessao.durationSec || 0), step: '0.1',
+  });
+  barra.setAttribute('aria-label', 'Posição do filme');
+  let arrastando = false;
+  barra.addEventListener('pointerdown', () => { arrastando = true; });
+  barra.addEventListener('change', () => { arrastando = false; controlar('seek', Number(barra.value)); });
+  controles.append(nodo('span', 'filme-nota-host', 'Controles do anfitrião'),
+    botao('▶ Tocar', 'btn btn-sm', () => controlar('play')),
+    botao('⏸ Pausar', 'btn btn-sm', () => controlar('pause')),
+    barra, tempo);
+  if (video) {
+    video.addEventListener('timeupdate', () => {
+      tempo.textContent = rotuloTempo();
+      if (!arrastando) barra.value = String(video.currentTime);
+    });
+  }
+  return barra;
+}
+
+/** Palco em modo só conversa (sem ficheiro) ou aviso de formato (error do <video>). */
+function nodoSoConversa() {
+  const caixa = nodo('div', 'filme-so-conversa');
+  caixa.append(nodo('p', 'filme-modo-titulo', 'Modo só conversa'),
+    nodo('p', '', 'O vídeo está oculto porque não escolheu um ficheiro. A conversa e as chamadas continuam disponíveis.'));
+  return caixa;
+}
+const nodoAvisoFormato = () => nodo('div', 'filme-so-conversa form-erro', AVISO_FORMATO);
+
+function atualizarMembros() {
+  const zona = sessao?.refs?.membros;
+  if (!zona) return;
+  zona.replaceChildren();
+  const ordenados = [...sessao.membros.entries()].sort((a, b) => (a[0] === euId ? -1 : b[0] === euId ? 1 : 0));
+  for (const [id, membro] of ordenados) {
+    const papel = id === euId ? (sessao.papel === 'anfitriao' ? '(anfitrião, você)' : '(você)') : '';
+    const chipMembro = nodo('span', 'filme-membro', `${membro.username} ${papel}`.trim());
+    const rotulo = membro.fileMatches ? 'ficheiro ✓' : 'sem ficheiro';
+    chipMembro.appendChild(nodo('span', `filme-ficheiro ${membro.fileMatches ? 'on' : ''}`, rotulo));
+    zona.appendChild(chipMembro);
+  }
+}
+// ---- controlos do anfitrião + drift do convidado -------------------------------------------
+
+/** Ação do anfitrião: aplica localmente e difunde ao servidor. */
+function controlar(action, positionSec = null) {
+  if (!sessao || sessao.papel !== 'anfitriao') return;
+  const v = sessao.refs?.video;
+  const pos = positionSec ?? (v ? v.currentTime : 0);
+  if (action === 'play' && v) v.play?.().catch(() => {});
+  if (action === 'pause' && v) v.pause();
+  if (action === 'seek' && v) v.currentTime = pos;
+  ws?.send({ type: 'session_control', sessionId: sessao.id, action, positionSec: pos, atMs: Date.now() });
+}
+
+/** Ciclo de drift do convidado: a cada 2 s, corrige se ≥1,5 s. */
+function iniciarDrift() {
+  pararDrift();
+  sessao.timer = setInterval(() => {
+    if (!sessao || sessao.papel === 'anfitriao') return;
+    const ultimo = sessao.ultimoControle;
+    if (!ultimo || ultimo.action !== 'play') return;
+    const v = sessao.refs?.video;
+    if (!v || v.readyState < 1) return;
+    const agora = Date.now();
+    if (driftSegundos(v.currentTime, ultimo, agora) >= TOLERANCIA_DRIFT_S) {
+      v.currentTime = esperadoPosicao(ultimo, agora); // correção: posição esperada
+    }
+  }, INTERVALO_DRIFT_MS);
+}
+function pararDrift() {
+  if (sessao?.timer) {
+    clearInterval(sessao.timer);
+    sessao.timer = null;
+  }
+}
+function pedirSaida() {
+  const pergunta =
+    sessao?.papel === 'anfitriao'
+      ? 'Isto termina a sessão de filme para TODOS os participantes. Continuar?'
+      : 'Na v1 não vai poder voltar a entrar nesta sessão. Sair à mesma?';
+  if (!globalThis.confirm(pergunta)) return;
+  terminarSessao();
+}
+
+/**
+ * Sai da sessão: session_leave ao servidor (o anfitrião acaba a sessão para
+ * todos via session_ended), timer limpo, objectURL revogado, chip removido e
+ * zona principal devolvida ao shell.
+ */
+function terminarSessao(motivo = null, avisar = true) {
+  const atual = sessao;
+  if (!atual) return;
+  sessao = null;
+  pararDrift();
+  if (avisar && atual.id) ws?.send({ type: 'session_leave', sessionId: atual.id });
+  if (atual.timer) clearInterval(atual.timer);
+  if (atual.objectUrl) URL.revokeObjectURL(atual.objectUrl);
+  removerChip(atual.chip);
+  if (atual.refs) restaurarZonaPrincipal(atual.convId);
+  if (motivo) toast(motivo, 'erro');
+}

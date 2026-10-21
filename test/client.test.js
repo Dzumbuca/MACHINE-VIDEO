@@ -139,9 +139,13 @@ test('ficheiros estáticos do cliente são servidos com o MIME certo', async () 
     ['/style.css', /text\/css/],
     ['/ui/shell.css', /text\/css/],
     ['/ui/chat.css', /text\/css/],
+    ['/ui/chamada.css', /text\/css/],
+    ['/ui/filme.css', /text\/css/],
     ['/app.js', /text\/javascript/],
     ['/api.js', /text\/javascript/],
     ['/ws.js', /text\/javascript/],
+    ['/call.js', /text\/javascript/],
+    ['/movie.js', /text\/javascript/],
   ]) {
     const resposta = await fetch(`${baseUrl}${caminho}`);
     assert.strictEqual(resposta.status, 200, caminho);
@@ -305,4 +309,166 @@ test('backoff de reconexão tenta de novo contra um porto morto', async () => {
     2500,
   );
   cliente.close(); // para o ciclo de reconexão do teste
+});
+
+// --- Task 10: envelopes de chamada e sessão de filme (consumidos por call.js/movie.js) ---
+
+test('chamada: convite com ack, sinal relayado intacto e fim', async () => {
+  const callId = 'call-teste-1';
+  const incoming = aguardarEnvelope(clienteB, 'call_incoming', (e) => e.callId === callId, 'B não recebeu call_incoming');
+  const ack = aguardarEnvelope(clienteA, 'call_ack', (e) => e.callId === callId, 'A não recebeu call_ack');
+  clienteA.send({ type: 'call_invite', callId, toUserIds: [userB.id], media: 'av' });
+
+  const convite = await incoming;
+  assert.strictEqual(convite.fromUserId, userA.id);
+  assert.strictEqual(convite.fromName, 'ana_2026');
+  assert.strictEqual(convite.media, 'av');
+
+  const confirma = await ack;
+  assert.deepStrictEqual(confirma.delivered, [userB.id]);
+  assert.deepStrictEqual(confirma.missed, []);
+
+  // offer vai DENTRO de call_signal.data e chega intacta (relay opaco)
+  const oferta = aguardarEnvelope(
+    clienteB,
+    'call_signal',
+    (e) => e.callId === callId && e.data?.kind === 'offer',
+    'B não recebeu a oferta pela call_signal',
+  );
+  clienteA.send({
+    type: 'call_signal', callId, toUserId: userB.id,
+    data: { kind: 'offer', payload: { type: 'offer', sdp: 'sdp-de-teste' } },
+  });
+  const sinalB = await oferta;
+  assert.strictEqual(sinalB.fromUserId, userA.id);
+  assert.deepStrictEqual(sinalB.data, { kind: 'offer', payload: { type: 'offer', sdp: 'sdp-de-teste' } });
+
+  const resposta = aguardarEnvelope(
+    clienteA,
+    'call_signal',
+    (e) => e.data?.kind === 'answer',
+    'A não recebeu a resposta',
+  );
+  clienteB.send({
+    type: 'call_signal', callId, toUserId: userA.id,
+    data: { kind: 'answer', payload: { type: 'answer', sdp: 'sdp-resposta' } },
+  });
+  await resposta;
+
+  // recusa de quem nunca entrou: call_end ao originador
+  const recusa = aguardarEnvelope(
+    clienteA,
+    'call_end',
+    (e) => e.callId === callId && e.fromUserId === userB.id,
+    'A não recebeu o call_end da recusa',
+  );
+  clienteB.send({ type: 'call_end', callId, toUserIds: [userA.id] });
+  await recusa;
+});
+
+test('sessão de filme: criação, join, controlo do anfitrião e fim', async () => {
+  const criada = aguardarEnvelope(clienteA, 'session_created', null, 'A não recebeu session_created');
+  const convite = aguardarEnvelope(clienteB, 'session_invite', null, 'B não recebeu session_invite');
+  clienteA.send({
+    type: 'session_create', title: 'Noite de filme', fileName: 'filme.mp4',
+    durationSec: 3600, toUserIds: [userB.id],
+  });
+
+  const criadoEnv = await criada;
+  const sessionId = criadoEnv.sessionId;
+  assert.ok(sessionId);
+  assert.strictEqual(criadoEnv.fileName, 'filme.mp4');
+  assert.strictEqual(criadoEnv.durationSec, 3600);
+
+  const conviteEnv = await convite;
+  assert.strictEqual(conviteEnv.fromName, 'ana_2026');
+  assert.strictEqual(conviteEnv.title, 'Noite de filme');
+  assert.strictEqual(conviteEnv.durationSec, 3600);
+
+  // join sem ficheiro: eco ao próprio + anúncio ao anfitrião
+  const membroB = aguardarEnvelope(
+    clienteB,
+    'session_member',
+    (e) => e.userId === userB.id,
+    'B não recebeu o eco do session_member',
+  );
+  const membroA = aguardarEnvelope(
+    clienteA,
+    'session_member',
+    (e) => e.userId === userB.id,
+    'A não foi avisado do session_member',
+  );
+  clienteB.send({ type: 'session_join', sessionId, fileMatches: false });
+  const ecoB = await membroB;
+  assert.strictEqual(ecoB.fileMatches, false);
+  await membroA;
+
+  // controlo do anfitrião: eco ao próprio + entrega ao convidado
+  const controleA = aguardarEnvelope(
+    clienteA,
+    'session_control',
+    (e) => e.action === 'play',
+    'A não recebeu o eco do session_control',
+  );
+  const controleB = aguardarEnvelope(
+    clienteB,
+    'session_control',
+    (e) => e.action === 'play',
+    'B não recebeu o session_control',
+  );
+  clienteA.send({ type: 'session_control', sessionId, action: 'play', positionSec: 12.5, atMs: Date.now() });
+  await controleA;
+  const recebidoB = await controleB;
+  assert.strictEqual(recebidoB.positionSec, 12.5);
+
+  // convidado não controla: E_NOT_HOST e nada é difundido
+  const negado = aguardarEnvelope(clienteB, 'error', (e) => e.code === 'E_NOT_HOST', 'B não recebeu E_NOT_HOST');
+  clienteB.send({ type: 'session_control', sessionId, action: 'seek', positionSec: 60, atMs: Date.now() });
+  await negado;
+
+  // anfitrião sai: session_ended host_left a todos
+  const fimA = aguardarEnvelope(clienteA, 'session_ended', (e) => e.reason === 'host_left', 'A não recebeu session_ended');
+  const fimB = aguardarEnvelope(clienteB, 'session_ended', (e) => e.reason === 'host_left', 'B não recebeu session_ended');
+  clienteA.send({ type: 'session_leave', sessionId });
+  await fimA;
+  await fimB;
+});
+
+test('helpers do cliente: matching de ficheiro, drift e regra de oferta', async () => {
+  const { avaliarFicheiro, esperadoPosicao, driftSegundos, rotuloDuracao } = await import('../public/movie.js');
+  const { devoOferecer } = await import('../public/call.js');
+
+  // nome + duração dentro da tolerância ±2 s → compatível
+  const ok = avaliarFicheiro({ nome: 'filme.mp4', duracaoSec: 600 }, { nome: 'filme.mp4', duracaoSec: 601 });
+  assert.strictEqual(ok.fileMatches, true);
+  assert.deepStrictEqual(ok.divergencias, []);
+
+  // nome E duração divergentes → aviso claro, mas pode entrar
+  const divergente = avaliarFicheiro({ nome: 'outro.mp4', duracaoSec: 700 }, { nome: 'filme.mp4', duracaoSec: 600 });
+  assert.strictEqual(divergente.fileMatches, false);
+  assert.strictEqual(divergente.divergencias.length, 2);
+
+  // regra anti-glare da malha: apenas o ID MENOR oferece
+  assert.strictEqual(devoOferecer('b', 'c'), true);
+  assert.strictEqual(devoOferecer('c', 'b'), false);
+  assert.strictEqual(devoOferecer('x', 'x'), false);
+
+  // drift: último "play" em 10 s há 3 s → esperado 13 s; 14,6 s diverge 1,6 s (≥1,5 → corrige)
+  const ultimo = { action: 'play', positionSec: 10, atMs: 1000 };
+  assert.strictEqual(esperadoPosicao(ultimo, 4000), 13);
+  const d1 = driftSegundos(14.6, ultimo, 4000);
+  assert.ok(Math.abs(d1 - 1.6) < 1e-9);
+  assert.ok(d1 >= 1.5);
+  assert.ok(driftSegundos(13.1, ultimo, 4000) < 1.5); // dentro da tolerância
+
+  // pausa: a posição esperada fica parada em positionSec
+  const pausado = { action: 'pause', positionSec: 10, atMs: 1000 };
+  assert.strictEqual(esperadoPosicao(pausado, 9000), 10);
+  const d2 = driftSegundos(11.6, pausado, 9000);
+  assert.ok(Math.abs(d2 - 1.6) < 1e-9);
+
+  // rótulos de duração em PT
+  assert.strictEqual(rotuloDuracao(154), '2:34');
+  assert.strictEqual(rotuloDuracao(3725), '1:02:05');
+  assert.strictEqual(rotuloDuracao(null), '—');
 });
