@@ -20,11 +20,12 @@ const {
  *   C→S {type:"chat_send", conversationId, text}
  *     → grava na store e entrega {type:"chat_message", conversationId,
  *       fromUserId, fromName, text, ts} a todos os membros online — todas as
- *       abas de cada destinatário, EXCLUINDO os sockets do remetente. O
- *       remetente recebe o envelope UMA vez, como eco da sua própria ação
- *       (sem dupla entrega).
+ *       abas de cada destinatário — e ao PRÓPRIO remetente em TODOS os seus
+ *       sockets (telemóvel + PC, ou duas abas): a mensagem própria aparece no
+ *       outro dispositivo sem recarregar, exatamente UMA vez por socket.
  *   não-membro (ou conversa desconhecida) → {type:"error",code:"E_FORBIDDEN"},
- *       sem fechar a ligação; text não-string/vazio → {code:"E_INVALID"}.
+ *       sem fechar a ligação; text não-string/vazio/maior que 2000
+ *       caracteres → {code:"E_INVALID"} (o tecto do WS espelha o do cliente).
  *
  * Regras (brief da Task 6 + acordos do controller):
  *   - mapeamento código→HTTP: E_INVALID→400, E_FORBIDDEN→403, E_NOTFOUND→404
@@ -38,12 +39,18 @@ const {
  *     derivado da dimensão, o corpo do brief não traz isGroup);
  *   - GET de mensagens exige membro ANTES de ler (a store não protege a
  *     leitura); conversa desconhecida → 403, simétrico ao WS;
- *   - ?limit= inteiro ≥ 1 (por omissão 50); ?before= cursor opcional — formato
- *     inválido → 400, cursor de formato válido desconhecido → [] (regra
- *     vinculante da store: beforeId desconhecido devolve lista vazia).
+ *   - ?limit= inteiro ≥ 1 (por omissão 50), limitado a 200 — números
+ *     gigantes (`?limit=1e20`) não podem rebentar com o bigint do LIMIT no
+ *     Postgres; ?before= cursor opcional — formato inválido → 400, cursor de
+ *     formato válido desconhecido → [] (regra vinculante da store: beforeId
+ *     desconhecido devolve lista vazia).
  */
 
 const LIMITE_PADRAO_MENSAGENS = 50;
+/** Tecto de ?limit= — protege o LIMIT bigint do Postgres (e escala v1). */
+const LIMITE_MAXIMO_MENSAGENS = 200;
+/** Tecto do texto no WS — o cliente já limita a 2000 caracteres. */
+const MAXIMO_CARACTERES_MENSAGEM = 2000;
 
 /** Formatos aceites para o cursor ?before=: id numérico (futuras stores) ou UUID. */
 const FORMATO_CURSOR = /^(?:\d+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
@@ -142,12 +149,12 @@ function createChatHandlers({ store, enviarDireto, enviarPara }) {
     return { status: 200, body: { messages } };
   }
 
-  /** ?limit= — inteiro ≥ 1; por omissão LIMITE_PADRAO_MENSAGENS. */
+  /** ?limit= — inteiro ≥ 1 (limitado a 200); por omissão LIMITE_PADRAO_MENSAGENS. */
   function lerLimite(params) {
     const bruto = params.get('limit');
     if (bruto === null) return LIMITE_PADRAO_MENSAGENS;
     if (!/^\d+$/.test(bruto) || Number(bruto) < 1) falha(400, 'Limit inválido');
-    return Number(bruto);
+    return Math.min(Number(bruto), LIMITE_MAXIMO_MENSAGENS);
   }
 
   /** ?before= — cursor opcional; vazio conta como ausente; formato mau → 400. */
@@ -197,7 +204,13 @@ function createChatHandlers({ store, enviarDireto, enviarPara }) {
       return false;
     }
 
-    if (typeof envelope.text !== 'string' || envelope.text.length === 0) {
+    if (
+      typeof envelope.text !== 'string' ||
+      envelope.text.length === 0 ||
+      envelope.text.length > MAXIMO_CARACTERES_MENSAGEM
+    ) {
+      // Cap server-side: o WS tinha o texto sem limite a caminho da store
+      // (o HTTP já capava o corpo a 64 KiB) — texto gigante é recusado.
       enviarDireto(ws, { type: 'error', code: 'E_INVALID' });
       return true;
     }
@@ -234,9 +247,14 @@ function createChatHandlers({ store, enviarDireto, enviarPara }) {
       ts: msg.ts,
     };
 
-    // Eco ao remetente: a sua própria ação devolve-lhe a mensagem uma única
-    // vez — a difusão abaixo EXCLUI os sockets do remetente (sem dupla entrega).
-    enviarDireto(ws, pacote);
+    // Eco ao remetente: a sua própria ação devolve-lhe a mensagem exatamente
+    // UMA vez POR SOCKET — ao socket originador E aos OUTROS sockets
+    // autenticados da mesma conta (telemóvel + PC, ou duas abas), para a
+    // mensagem própria aparecer no outro dispositivo sem recarregar.
+    // enviarPara itera presenca.sockets(user.id), que inclui `ws`; a difusão
+    // abaixo continua a EXCLUIR o remetente (sem dupla entrega a quem quer
+    // que seja).
+    enviarPara(user.id, pacote);
 
     // Difusão a todos os outros membros online — todas as abas de cada um
     // (enviarPara/enviarDireto são best-effort, com readyState + try/catch).

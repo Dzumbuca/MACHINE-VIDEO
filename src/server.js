@@ -18,7 +18,16 @@ function createServer({ store } = {}) {
   function attach(wsOptions = {}) {
     const { authTimeoutMs, ...opcoesWss } = wsOptions;
     const { WebSocketServer } = require('ws');
-    const wss = new WebSocketServer({ server, ...opcoesWss });
+    // maxPayload de 1 MiB por omissão: os frames são parseados ANTES da
+    // autenticação e o default do ws (100 MiB) deixa qualquer anónimo
+    // derrubar um container pequeno com alguns frames gigantes (OOM).
+    // SDP/ICE e o chat (texto capado a 2000 caracteres) cabem de sobra;
+    // as opções de quem chama podem sobrepor.
+    const wss = new WebSocketServer({
+      server,
+      maxPayload: 1024 * 1024,
+      ...opcoesWss,
+    });
     criarHub({ store, wss, authTimeoutMs });
     return wss;
   }

@@ -12,7 +12,7 @@
  *   - os botões "Chamar" e "Sessão de filme" ficam no cabeçalho da conversa.
  */
 
-import { api, lerToken } from './api.js';
+import { api, lerToken, limparToken } from './api.js';
 import { WsClient } from './ws.js';
 import { montarAuth, reporAuth } from './ui/auth.js';
 import * as vistas from './ui/views.js';
@@ -120,6 +120,7 @@ function sairLocal(mensagem) {
   // Callbacks de saída ANTES de fechar o WS: os call_end/session_leave de fim precisam da ligação viva.
   for (const cb of saidaCallbacks) cb();
   if (ws) ws.close();
+  limparToken(); // sair é sair: sem isto o token ficava em localStorage (partilha de computador)
   limparEstado();
   mostrarAuth();
   if (mensagem) vistas.toast(mensagem, 'ok');

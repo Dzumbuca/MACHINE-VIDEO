@@ -2,6 +2,7 @@
 
 const bcrypt = require('bcryptjs');
 const { StoreError } = require('./store');
+const { criarLimitador } = require('./ratelimit');
 const {
   exigirSessao,
   falha,
@@ -32,6 +33,16 @@ const {
  *     como hash, nunca em claro.
  *   - o token vem de `store.createSession(userId)` — 32 bytes aleatórios em
  *     hex (crypto.randomBytes(32).toString("hex") na implementação da store).
+ *   - register/login/recover são endpoints PÚBLICOS num URL público: passam
+ *     por um limitador in-memory (src/ratelimit.js, 10 tentativas/5 min por
+ *     chave IP+username — por-processo, recomeça em restart; suficiente v1)
+ *     antes de qualquer bcrypt, para travar força-bruta e DoS de CPU.
+ *     Excedido → 429 {"ok":false,"erro":"Demasiadas tentativas. …"}.
+ *   - a recuperação (recover) APAGA todas as sessões do utilizador depois de
+ *     trocar a senha (store.deleteSessionsForUser): tokens roubados/antigos
+ *     deixam de valer. O utilizador do recover não fica logado (fluxo
+ *     existente: recover → volta ao login). No login NÃO se invalida — cada
+ *     login cria a sua própria sessão sem mexer nas outras.
  *
  * Cada handler devolve { status, body }; o router (src/routes.js) escreve a
  * resposta. Erros previstos via HttpError são convertidos em { ok:false }.
@@ -40,6 +51,24 @@ const {
 const BCRYPT_ROUNDS = 10;
 const MIN_PASSWORD_LENGTH = 6;
 const USERNAME_PATTERN = /^[A-Za-z0-9_]{3,20}$/;
+
+/** Mensagem única do limitador (o router embrulha em {ok:false,erro}). */
+const ERRO_LIMITE = 'Demasiadas tentativas. Espera um pouco.';
+
+/** IP do cliente tal como o Node o reporta (proxy do Render inclui só 1 salto). */
+function ipDe(req) {
+  return (req.socket && req.socket.remoteAddress) || 'desconhecido';
+}
+
+/**
+ * Chave do limitador: tipo de ação + IP + username (quando houver) — a
+ * parte de username isola contas diferentes, a de IP trava ataques sem
+ * conta conhecida.
+ */
+function chaveLimite(acao, req, username) {
+  const parte = typeof username === 'string' && username.length > 0 ? username : '-';
+  return `${acao}:${ipDe(req)}:${parte}`;
+}
 
 function validarUsername(valor) {
   if (typeof valor !== 'string' || !USERNAME_PATTERN.test(valor)) {
@@ -61,8 +90,17 @@ function exigirTexto(valor, mensagem) {
 }
 
 function createAuthHandlers({ store }) {
+  // Uma instância partilhada pelas três rotas públicas; as chaves levam o
+  // prefixo da ação, pelo que cada endpoint tem a sua própria janela.
+  const limitador = criarLimitador();
+
   async function registar(req) {
     const corpo = await lerCorpoJson(req);
+    if (
+      !limitador.permitir(chaveLimite('register', req, corpo && corpo.username))
+    ) {
+      falha(429, ERRO_LIMITE);
+    }
     const username = validarUsername(corpo.username);
     const password = validarPassword(corpo.password);
     const secQuestion = exigirTexto(corpo.secQuestion, 'Pergunta de segurança em falta');
@@ -83,6 +121,9 @@ function createAuthHandlers({ store }) {
 
   async function login(req) {
     const corpo = await lerCorpoJson(req);
+    if (!limitador.permitir(chaveLimite('login', req, corpo && corpo.username))) {
+      falha(429, ERRO_LIMITE);
+    }
     const { username, password } = corpo;
     if (typeof username !== 'string' || typeof password !== 'string') {
       falha(400, 'Pedido inválido');
@@ -110,6 +151,9 @@ function createAuthHandlers({ store }) {
 
   async function recuperar(req) {
     const corpo = await lerCorpoJson(req);
+    if (!limitador.permitir(chaveLimite('recover', req, corpo && corpo.username))) {
+      falha(429, ERRO_LIMITE);
+    }
     const { username, secAnswer, newPassword } = corpo;
     const novaSenha = validarPassword(newPassword);
     if (typeof username !== 'string' || typeof secAnswer !== 'string') {
@@ -122,6 +166,10 @@ function createAuthHandlers({ store }) {
     if (!respostaOk) falha(401, 'Resposta de segurança incorreta');
     const passHash = await bcrypt.hash(novaSenha, BCRYPT_ROUNDS);
     await store.updateUserPassword(user.id, passHash);
+    // Recuperação = recuperar o controlo da conta: apaga TODAS as sessões
+    // (tokens roubados/antigos deixam de valer). O utilizador do recover
+    // não fica logado — volta ao login, como no fluxo existente.
+    await store.deleteSessionsForUser(user.id);
     return { status: 200, body: { ok: true } };
   }
 

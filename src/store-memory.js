@@ -92,6 +92,14 @@ function createStoreMemory() {
     userIdByToken.delete(token); // idempotente
   }
 
+  // Método aditivo (passe final — recuperação de senha): apaga TODAS as
+  // sessões do utilizador, para tokens roubados/antigos deixarem de valer.
+  function deleteSessionsForUser(userId) {
+    for (const [token, id] of userIdByToken) {
+      if (id === userId) userIdByToken.delete(token);
+    }
+  }
+
   // --- amizades ---------------------------------------------------------------
 
   function saoAmigos(a, b) {
@@ -265,6 +273,7 @@ function createStoreMemory() {
     createSession,
     getUserByToken,
     deleteSession,
+    deleteSessionsForUser,
     // amizades
     createFriendRequest,
     acceptFriendRequest,

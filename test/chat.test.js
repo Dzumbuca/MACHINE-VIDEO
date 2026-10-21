@@ -392,7 +392,8 @@ test('chat_send grava e o segundo membro online recebe chat_message', async () =
   await Promise.all([fecharCliente(anaCli), fecharCliente(brunoCli)]);
 });
 
-test('multi-aba: todas as abas do destinatário recebem; as outras abas do remetente não', async () => {  const conversationId = await criarConversaRest(ana, [bruno.userId]);
+test('multi-aba: todas as abas do destinatário e do remetente recebem (eco multi-dispositivo)', async () => {
+  const conversationId = await criarConversaRest(ana, [bruno.userId]);
   const brunoAba1 = await clienteAutenticado(bruno.token);
   const brunoAba2 = await clienteAutenticado(bruno.token);
   const anaAba1 = await clienteAutenticado(ana.token);
@@ -409,12 +410,12 @@ test('multi-aba: todas as abas do destinatário recebem; as outras abas do remet
   assert.strictEqual(
     mensagensDe(anaAba1, (m) => m.type === 'chat_message').length,
     1,
-    'aba remetente: apenas o eco da própria ação',
+    'aba remetente: exatamente o eco da própria ação',
   );
-  assert.deepStrictEqual(
-    mensagensDe(anaAba2, (m) => m.type === 'chat_message'),
-    [],
-    'outra aba do remetente não recebe (sockets do remetente excluídos da difusão)',
+  assert.strictEqual(
+    mensagensDe(anaAba2, (m) => m.type === 'chat_message').length,
+    1,
+    'outra aba do remetente também recebe o eco (mesma conta em outro socket)',
   );
 
   await Promise.all([

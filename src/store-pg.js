@@ -54,6 +54,9 @@ function novoId() {
   return crypto.randomUUID();
 }
 
+/** Tecto defensivo de limit — espelha o clamp da rota (src/chat.js). */
+const LIMITE_MAXIMO_MENSAGENS = 200;
+
 /** Linha users → objeto do contrato (createdAt em ISO, como na memória). */
 function linhaUser(row) {
   return {
@@ -212,6 +215,11 @@ async function createStorePg(connectionString, { reset = false, ...opcoesPool } 
     // apagado. (Padrão vigiado por um teste de regressão em
     // test/store-pg.test.js: toda query com placeholder passa os valores.)
     await pool.query('DELETE FROM sessions WHERE token = $1', [token]); // idempotente
+  }
+
+  // Aditivo (passe final): apaga TODAS as sessões do utilizador — tokens roubados deixam de valer.
+  async function deleteSessionsForUser(userId) {
+    await pool.query('DELETE FROM sessions WHERE user_id = $1', [userId]); // idempotente
   }
 
   // --- amizades ---------------------------------------------------------------
@@ -446,7 +454,9 @@ async function createStorePg(connectionString, { reset = false, ...opcoesPool } 
     }
     let clausulaLimite = '';
     if (limit != null) {
-      params.push(Math.trunc(limit)); // LIMIT por parâmetro (nunca interpolação)
+      // Defensiva: limit gigante (ex.: 1e20 de ?limit=) rebentaria o bigint do LIMIT — tecto 200 (espelha chat.js).
+      const limiteSeguro = limit > LIMITE_MAXIMO_MENSAGENS ? LIMITE_MAXIMO_MENSAGENS : Math.trunc(limit);
+      params.push(limiteSeguro); // LIMIT por parâmetro (nunca interpolação)
       clausulaLimite = ` LIMIT $${params.length}`;
     }
     const r = await pool.query(
@@ -468,6 +478,7 @@ async function createStorePg(connectionString, { reset = false, ...opcoesPool } 
     createSession,
     getUserByToken,
     deleteSession,
+    deleteSessionsForUser,
     // amizades
     createFriendRequest,
     acceptFriendRequest,

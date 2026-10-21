@@ -7,7 +7,8 @@
  * completo com os MÓDULOS DO CLIENTE de public/:
  *   GET / serve a nova interface → registar 2 utilizadores → amizade
  *   (pedido, aceitação, erros previstos) → 2 clientes WebSocket autenticados →
- *   mensagem entregue em tempo real (+ eco ao remetente) → histórico REST →
+ *   mensagem entregue em tempo real (+ eco ao remetente e às suas outras
+ *   abas, multi-dispositivo) → histórico REST →
  *   presença (online/offline) → tipo desconhecido → backoff de reconexão.
  *
  * Shims mínimos de browser (localStorage/WebSocket) antes do import dinâmico
@@ -272,6 +273,26 @@ test('histórico REST devolve a mensagem (mais recente primeiro)', async () => {
   assert.ok(messages.length >= 1);
   assert.strictEqual(messages[0].text, 'Olá bruno, tudo bem?');
   assert.strictEqual(messages[0].userId, userA.id);
+});
+
+test('mesma conta em 2 sockets: chat_send chega a ambas exatamente 1 vez', async () => {
+  const clienteA2 = new WsClient({ url: wsUrl });
+  clienteA2.connect(tokenA); // 2.ª aba do MESMO utilizador (telemóvel + PC)
+  await esperarCondicao(() => clienteA2.status === 'online', '2.ª aba de A não autenticou');
+
+  const eco = { aba1: 0, aba2: 0 };
+  const anular1 = clienteA.on('chat_message', () => eco.aba1++);
+  const anular2 = clienteA2.on('chat_message', () => eco.aba2++);
+  const chegouA2 = aguardarEnvelope(clienteA2, 'chat_message', (m) => m.text === 'nota para as duas abas', 'a 2.ª aba da mesma conta não recebeu a mensagem');
+  assert.ok(clienteA.send({ type: 'chat_send', conversationId, text: 'nota para as duas abas' }));
+  await chegouA2;
+  await new Promise((r) => setTimeout(r, 80)); // folga: um eco duplicado, se houvesse, já teria chegado
+  assert.strictEqual(eco.aba1, 1, 'aba originadora: exatamente 1 chat_message');
+  assert.strictEqual(eco.aba2, 1, 'outra aba da mesma conta: exatamente 1 chat_message');
+
+  anular1();
+  anular2();
+  clienteA2.close();
 });
 
 test('presença: amigo online ao ligar e offline ao desligar', async () => {

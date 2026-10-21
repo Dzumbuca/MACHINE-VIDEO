@@ -25,6 +25,10 @@
  *   createSession(userId)                          → token (string opaca)
  *   getUserByToken(token)                          → user | null
  *   deleteSession(token)                           → undefined (idempotente)
+ *   deleteSessionsForUser(userId)                  → undefined (aditivo, passe
+ *                final: a recuperação de senha apaga TODAS as sessões do
+ *                utilizador — tokens roubados/antigos deixam de valer;
+ *                idempotente, e sem erro para um userId sem sessões)
  *   createFriendRequest(fromId, toId)              → pedido
  *   acceptFriendRequest(requestId, toId)           → pedido atualizado
  *   listFriends(userId)                            → [user]

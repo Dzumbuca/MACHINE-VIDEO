@@ -75,6 +75,12 @@ está lá:
 > aceite — verifica se colaste a cadeia completa e sem espaços, e faz
 > **Manual Deploy → Deploy latest commit** depois de a corrigir.
 
+> **Sanity check da base de dados (uma só vez, contra base descartável):**
+> cria uma base PostgreSQL só para isto e corre
+> `DATABASE_URL=postgres://… node --test test/store-pg.test.js` — a suite
+> faz `TRUNCATE` às tabelas, por isso **nunca** apontes a `DATABASE_URL` de
+> produção para os testes.
+
 ## Passo 4 — Primeira visita
 
 1. No topo da página do serviço, o Render mostra o endereço público
@@ -82,6 +88,9 @@ está lá:
 2. Na primeira visita após um período sem utilização, o plano gratuito
    "acorda" o serviço: **pode demorar cerca de 1 minuto** a responder. É
    normal — a partir daí responde logo.
+3. **Health check**: usa `GET /api/health` (ex.:
+   <https://machine-video.onrender.com/api/health>, responde `{"ok":true}`) —
+   é este o caminho a pôr no *Health Check* do Render/monitor.
 
 ## Checklist E2E (critério de sucesso da spec)
 
