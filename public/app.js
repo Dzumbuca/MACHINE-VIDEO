@@ -105,7 +105,6 @@ function limparEstado() {
   $('lista-conversas').replaceChildren();
   $('lista-amigos').replaceChildren();
   $('pedidos-zona').replaceChildren();
-  for (const cb of saidaCallbacks) cb();
 }
 
 async function terminarSessao() {
@@ -118,6 +117,8 @@ async function terminarSessao() {
 }
 
 function sairLocal(mensagem) {
+  // Callbacks de saída ANTES de fechar o WS: os call_end/session_leave de fim precisam da ligação viva.
+  for (const cb of saidaCallbacks) cb();
   if (ws) ws.close();
   limparEstado();
   mostrarAuth();

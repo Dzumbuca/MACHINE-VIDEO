@@ -1,22 +1,20 @@
 /**
  * call.js — videochamada WebRTC em malha (Task 10).
  *
- * Sinalização sobre o relay puro da Task 7 (src/signal.js): offer, answer e
- * ICE viajam DENTRO de call_signal.data, opacos ao servidor, como
- * {kind:"offer"|"answer"|"ice"|"hello"|"roster"|"join", payload…}.
- * Malha determinística sem glare: em cada par (eu, outro) o ID MENOR cria a
- * oferta (devoOferecer). Para os pares se descobrirem: o convidado ao aceitar
- * envia {kind:"hello", username} ao originador (de call_incoming.fromUserId);
- * o originador responde {kind:"roster", members:[eu + outros já dentro]} e
- * anuncia {kind:"join", userId, username} a quem já está dentro; quem
- * descobre um par onde é o ID menor oferece — exatamente uma oferta por par.
- * ICE pode chegar antes do remote description: fila POR PAR, descarregada
- * após setRemoteDescription. "Encerrar" manda call_end a todos os outros e
- * termina para TODOS; call_end de quem estava dentro encerra; de quem nunca
- * entrou é recusa (remove só esse convite). No fim TODAS as tracks locais
- * são paradas e todas as RTCPeerConnection fechadas. Fornece ainda os
- * ajudantes de UI partilhados (nodo, botão, modal, chips) usados por movie.js.
- * Sem dependências; nunca regista tokens.
+ * Sinalização sobre o relay puro da Task 7 (src/signal.js): offer, answer e ICE viajam DENTRO de
+ * call_signal.data, opacos ao servidor, como {kind:"offer"|"answer"|"ice"|"hello"|"roster"|"join",
+ * payload…}. Malha determinística sem glare: em cada par (eu, outro) o ID MENOR cria a oferta
+ * (devoOferecer). Para os pares se descobrirem: o convidado ao aceitar envia {kind:"hello",
+ * username} ao originador (de call_incoming.fromUserId); o originador responde {kind:"roster",
+ * members:[eu + outros já dentro]} e anuncia {kind:"join", userId, username} a quem já está
+ * dentro; quem descobre um par onde é o ID menor oferece — exatamente uma oferta por par. ICE
+ * pode chegar antes do remote description: fila POR PAR, descarregada após setRemoteDescription.
+ * "Encerrar" manda call_end a todos os outros e termina para TODOS; call_end de quem estava
+ * dentro encerra; de quem nunca entrou é recusa (remove só esse convite). PC 'failed' de um par
+ * (logout/refresh/falha de rede do outro lado): graça curta e a chamada encerra sozinha. No fim
+ * TODAS as tracks locais são paradas e todas as RTCPeerConnection fechadas. Fornece os ajudantes
+ * de UI partilhados (nodo, botão, modal, chips) usados por movie.js. Sem dependências; nunca
+ * regista tokens.
  */
 
 import { toast, mostrarVazio } from './ui/views.js';
@@ -116,8 +114,7 @@ export function abrirModal({ titulo, corpo = [], acoes = [], aoFechar, bloqFora 
 export function restaurarZonaPrincipal(convIdAlternativa = null) {
   const MV = globalThis.window?.MV;
   if (!MV) return;
-  const ativa = MV.obterEstado?.()?.ativa ?? null;
-  const destino = ativa ?? convIdAlternativa;
+  const destino = MV.obterEstado?.()?.ativa ?? convIdAlternativa;
   if (destino && MV.abrirConversa) {
     MV.abrirConversa(destino);
     return;
@@ -142,14 +139,10 @@ export function iniciarChamadas() {
   soltarHandlers.length = 0;
   ws = cliente;
   euId = utilizador.id;
-  const rotas = {
-    call_incoming: aoIncoming,
-    call_ack: aoAck,
-    call_signal: aoSinal,
-    call_end: aoFim,
-    error: aoErro,
-  };
-  for (const [tipo, fn] of Object.entries(rotas)) soltarHandlers.push(ws.on(tipo, fn));
+  for (const [tipo, fn] of [
+    ['call_incoming', aoIncoming], ['call_ack', aoAck], ['call_signal', aoSinal],
+    ['call_end', aoFim], ['error', aoErro],
+  ]) soltarHandlers.push(ws.on(tipo, fn));
   MV.chamarDaConversa = iniciarDaConversa;
   MV.aoSair?.(() => {
     if (chamada) encerrar();
@@ -377,7 +370,7 @@ function adicionarParticipante(id, username = null) {
     if (username) par.username = username;
     return par;
   }
-  par = { id, username: username || nomeDe(id), pc: null, filaIce: [], tile: null, aOferecer: false };
+  par = { id, username: username || nomeDe(id), pc: null, filaIce: [], tile: null, aOferecer: false, falhou: false };
   chamada.participantes.set(id, par);
   if (chamada.refs && chamada.refs.grelha.children.length < LIMITE_TILES) {
     par.tile = criarTile(par.username);
@@ -407,7 +400,17 @@ function criarPc(par) {
       par.tile.video.play?.().catch(() => {});
     }
   };
-  pc.onconnectionstatechange = () => atualizarEstado();
+  pc.onconnectionstatechange = () => {
+    if (pc.connectionState === 'failed' && !par.falhou) { // par desapareceu: graça curta e encerra (1×/par)
+      par.falhou = true;
+      setTimeout(() => {
+        if (chamada?.participantes.get(par.id) === par && par.pc?.connectionState !== 'connected') {
+          encerrar(`A ligação com ${nomeDe(par.id)} falhou — a chamada terminou.`);
+        }
+      }, 2000);
+    }
+    atualizarEstado();
+  };
   return pc;
 }
 async function oferecer(par) {
@@ -463,8 +466,7 @@ function alternaCam() {
 function atualizarEstado() {
   if (!chamada?.refs) return;
   const ligado = [...chamada.participantes.values()].some((par) => par.pc?.connectionState === 'connected');
-  chamada.refs.estado.textContent =
-    chamada.participantes.size === 0 ? 'A chamar…' : ligado ? 'Em chamada' : 'A ligar…';
+  chamada.refs.estado.textContent = chamada.participantes.size === 0 ? 'A chamar…' : ligado ? 'Em chamada' : 'A ligar…';
   chamada.refs.estado.classList.toggle('on', ligado);
 }
 /**

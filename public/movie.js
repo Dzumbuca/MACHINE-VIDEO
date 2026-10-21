@@ -1,18 +1,16 @@
 /**
  * movie.js — Sessão de Filme (Task 10).
  *
- * Sincronia anfitrião-autoritativa (envelopes da Task 8, src/session.js). O
- * anfitrião escolhe um ficheiro LOCAL (MP4/WebM → URL.createObjectURL; o
- * ficheiro NUNCA viaja pelo WS, só metadados) e controla a reprodução com
- * session_control {play|pause|seek, positionSec, atMs}. O convidado aceita o
- * convite num único diálogo onde escolhe o SEU ficheiro: nome + duração
- * (±2 s) comparados com os do anfitrião — divergência avisa mas permite
- * entrar; sem ficheiro → modo "só conversa". Drift (convidado, a cada 2 s):
- * se o currentTime divergir ≥1,5 s da posição esperada (positionSec +
- * decorrido desde atMs quando a tocar), faz seek para essa posição — o
- * anfitrião é a fonte da verdade; convidados NÃO têm controles. Formato não
- * suportado (MKV/AVI): o <video> falha o load (evento error) → aviso PT.
- * Reutiliza ajudantes de UI de call.js.
+ * Sincronia anfitrião-autoritativa (envelopes da Task 8, src/session.js). O anfitrião escolhe um
+ * ficheiro LOCAL (MP4/WebM → URL.createObjectURL; o ficheiro NUNCA viaja pelo WS, só metadados) e
+ * controla a reprodução com session_control {play|pause|seek, positionSec, atMs}. O convidado
+ * aceita o convite num único diálogo onde escolhe o SEU ficheiro: nome + duração (±2 s) comparados
+ * com os do anfitrião — divergência avisa mas permite entrar; sem ficheiro → modo "só conversa".
+ * Drift (convidado, a cada 2 s): se o currentTime divergir ≥1,5 s da posição esperada (positionSec
+ * + decorrido desde atMs quando a tocar), faz seek para essa posição — o anfitrião é a fonte da
+ * verdade; convidados NÃO têm controles. Formato não suportado (MKV/AVI): o <video> falha o load
+ * (evento error) → aviso PT. O convite não traz o id do anfitrião: o nome do convite fica na lista
+ * de participantes como anfitrião. Reutiliza ajudantes de UI de call.js.
  */
 
 import { toast } from './ui/views.js';
@@ -274,6 +272,8 @@ function juntar(invite, ficheiro, fileMatches) {
     fileName: invite.fileName, durationSec: invite.durationSec, convId: null,
     ficheiro: ficheiro?.file ?? null, fileMatches,
   });
+  const anfitriao = `${invite.fromName || 'Anfitrião'} (anfitrião)`;
+  sessao.membros.set('__anfitriao__', { username: anfitriao, fileMatches: true }); // sempre tem o ficheiro
   if (!ws?.send({ type: 'session_join', sessionId: sessao.id, fileMatches })) {
     toast('Sem ligação ao servidor — não entrou na sessão.', 'erro');
     sessao = null;
@@ -323,6 +323,7 @@ function aoEnded(envelope) {
 }
 function aoErro(envelope) {
   if (!sessao) return;
+  if (sessao.id === null) sessao = null; // sessão fantasma: session_created nunca chegou — limpar
   const codigos = {
     E_INVALID: 'Pedido de sessão inválido.',
     E_NOTFOUND: 'A sessão de filme já não existe.',
