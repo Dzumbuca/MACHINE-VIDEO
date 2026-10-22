@@ -73,16 +73,18 @@ export function montarAuth({ aoEntrar } = {}) {
 
   // --- Entrar / criar conta com Google (v1.1) ------------------------------
 
-  // Os botões só aparecem se o servidor tiver credenciais Google configuradas.
+  // Os botões são visíveis POR DEFECTO no HTML (à prova de cache — o dono
+  // espera ver o botão à primeira). Só se ESCONDEM quando o servidor responde
+  // que o Google não está configurado (providers → google:false).
   const botoesGoogle = document.querySelectorAll('[data-google-btn]');
   fetch('/api/auth/providers')
     .then((r) => r.json())
     .then((p) => {
-      if (p && p.ok && p.google) {
-        botoesGoogle.forEach((b) => { b.hidden = false; });
+      if (!(p && p.ok && p.google)) {
+        botoesGoogle.forEach((b) => { b.hidden = true; });
       }
     })
-    .catch(() => {}); // sem servidor: botões ficam escondidos
+    .catch(() => {}); // sem resposta: ficam visíveis (clicar mostra o estado real)
   botoesGoogle.forEach((b) => b.addEventListener('click', () => {
     window.location.assign('/api/auth/google/start');
   }));
