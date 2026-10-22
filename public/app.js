@@ -401,7 +401,7 @@ function abrirModalGrupo() {
 }
 
 
-function abrirConversa(id) {
+async function abrirConversa(id) {
   const conv = estado.conversas.find((c) => c.id === id);
   if (!conv || !estado.utilizador) return;
   estado.ativa = id;
@@ -529,12 +529,12 @@ window.MV = {
   abrirConversa,
   zonaPrincipal: () => $('main'),
   /** Substitui a zona principal por uma vista própria (ex.: chamada em curso). */
-function montarVistaPrincipal(nodo) {
-  refsConversa = null;
-  // Chamada/sessão de filme no telemóvel: a vista ocupa o ecrã (main visível).
-  $('app').classList.add('chat-open');
-  $('main').replaceChildren(nodo);
-}
+  montarVistaPrincipal(nodo) {
+    refsConversa = null;
+    // Chamada/sessão de filme no telemóvel: a vista ocupa o ecrã (main visível).
+    $('app').classList.add('chat-open');
+    $('main').replaceChildren(nodo);
+  },
   vistaConversa: () => refsConversa,
   /** Registra um callback executado quando a sessão termina. */
   aoSair(cb) {
