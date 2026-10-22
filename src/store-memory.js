@@ -51,7 +51,10 @@ function createStoreMemory() {
     if (userIdByUsername.has(username)) {
       throw new StoreError('E_DUP', 'Nome de utilizador já existe');
     }
-    const user = { id: novoId(), username, passHash, secQ, secA, createdAt: agora() };
+    const user = {
+      id: novoId(), username, passHash, secQ, secA,
+      visibilidade: 'publico', createdAt: agora(),
+    };
     usersById.set(user.id, user);
     userIdByUsername.set(username, user.id);
     return { ...user };
@@ -104,7 +107,7 @@ function createStoreMemory() {
   function createUserWithGoogle({ username, email, googleId }) {
     const user = {
       id: novoId(), username, passHash: null, secQ: null, secA: null,
-      email, googleId, phone: null, createdAt: agora(),
+      email, googleId, phone: null, visibilidade: 'publico', createdAt: agora(),
     };
     usersById.set(user.id, user);
     userIdByUsername.set(username, user.id);
@@ -141,6 +144,19 @@ function createStoreMemory() {
     } else {
       user.phone = null;
     }
+    return { ...user };
+  }
+
+  // --- visibilidade (v1.1 — perfis público/privado) --------------------------
+
+  // 'publico': encontrável por qualquer utilizador (nome, email, telefone).
+  // 'privado': encontrável SÓ por quem tem o email ou o telefone.
+  function setVisibilidade(userId, visibilidade) {
+    const user = exigeUser(userId);
+    if (visibilidade !== 'publico' && visibilidade !== 'privado') {
+      throw new StoreError('E_INVALID', 'Visibilidade inválida');
+    }
+    user.visibilidade = visibilidade;
     return { ...user };
   }
 
@@ -347,6 +363,8 @@ function createStoreMemory() {
     // telefone (v1.1)
     getUserByPhone,
     setPhone,
+    // visibilidade (v1.1)
+    setVisibilidade,
     // sessões
     createSession,
     getUserByToken,

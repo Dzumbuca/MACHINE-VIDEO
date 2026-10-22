@@ -47,6 +47,7 @@ function iniciar() {
   $('btn-sair').addEventListener('click', terminarSessao);
   $('form-amigo').addEventListener('submit', adicionarAmigo);
   $('form-telefone').addEventListener('submit', guardarTelefone);
+  $('minha-visibilidade').addEventListener('change', guardarVisibilidade);
   $('btn-novo-grupo').addEventListener('click', abrirModalGrupo);
   $('lista-conversas').addEventListener('click', (ev) => {
     const item = ev.target.closest('.item[data-id]');
@@ -57,10 +58,27 @@ function iniciar() {
   retomarSessao();
 }
 
-// Preenche o campo de telefone com o valor guardado (o /api/me devolve-o).
+// Preenche o perfil (telefone + visibilidade) com o valor guardado (/api/me).
 function preencherTelefone(user) {
   const campo = $('meu-telefone');
   if (campo && user && user.phone != null) campo.value = user.phone;
+  const visibilidade = $('minha-visibilidade');
+  if (visibilidade && user?.visibilidade) visibilidade.value = user.visibilidade;
+}
+
+async function guardarVisibilidade() {
+  const seletor = $('minha-visibilidade');
+  try {
+    await api.guardarVisibilidade(seletor.value);
+    vistas.toast(
+      seletor.value === 'privado'
+        ? '🔒 Privado — só quem tem o teu email ou telefone te encontra'
+        : '🌐 Público — qualquer pessoa com conta pode encontrar-te',
+      'ok',
+    );
+  } catch (e) {
+    vistas.toast(e.erro || 'Não foi possível guardar a visibilidade', 'erro');
+  }
 }
 
 async function retomarSessao() {

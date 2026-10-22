@@ -96,6 +96,8 @@ export const api = {
   // --- amizades ---------------------------------------------------------------
   guardarTelefone: (phone) =>
     pedir('/api/me/phone', { method: 'POST', body: { phone } }),
+  guardarVisibilidade: (visibilidade) =>
+    pedir('/api/me/visibilidade', { method: 'POST', body: { visibilidade } }),
   amigos: () => pedir('/api/friends'),
   pedirAmizade: (contacto) =>
     pedir('/api/friends/request', { method: 'POST', body: { contacto } }),

@@ -69,6 +69,8 @@ function linhaUser(row) {
     // Google (v1.1) — ausentes em contas clássicas; undefined no objeto.
     email: row.email,
     googleId: row.google_id,
+    // Perfil público/privado (v1.1) — o Postgres já devolve 'publico' por defeito.
+    visibilidade: row.visibilidade,
     createdAt: row.created_at.toISOString(),
   };
 }

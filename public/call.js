@@ -119,6 +119,12 @@ export function restaurarZonaPrincipal(convIdAlternativa = null) {
     MV.abrirConversa(destino);
     return;
   }
+  // v1.1: sem conversa ativa, fecharVista remove o chat-open (o telemóvel
+  // regressa à lista) e mostra o vazio — antes ficava PRETO e sem saída.
+  if (MV.fecharVista) {
+    MV.fecharVista();
+    return;
+  }
   const main = MV.zonaPrincipal?.();
   if (main) mostrarVazio(main, { temAmigos: (MV.obterEstado?.()?.amigos?.size ?? 0) > 0 });
 }

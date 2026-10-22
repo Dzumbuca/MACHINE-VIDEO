@@ -99,3 +99,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email
 ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone
   ON users (phone) WHERE phone IS NOT NULL;
+
+-- v1.1 — perfis público/privado (aditivo, idempotente): 'publico' aparece em
+-- qualquer busca; 'privado' só é encontrado por email ou telefone.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS visibilidade TEXT NOT NULL DEFAULT 'publico';

@@ -180,6 +180,7 @@ function createAuthHandlers({ store }) {
     'POST /api/recover': recuperar,
     'GET /api/me': perfil,
     'POST /api/me/phone': guardarTelefone,
+    'POST /api/me/visibilidade': guardarVisibilidade,
   };
 
   // Telefone do utilizador (v1.1 — descoberta de amigos). Vazio → remove.
@@ -191,6 +192,17 @@ function createAuthHandlers({ store }) {
     }
     const atualizado = await store.setPhone(user.id, corpo.phone.trim());
     return { status: 200, body: { ok: true, phone: atualizado.phone ?? null } };
+  }
+
+  // Visibilidade do perfil (v1.1): 'publico' ou 'privado'.
+  async function guardarVisibilidade(req) {
+    const { user } = await exigirSessao(req, store);
+    const corpo = await lerCorpoJson(req);
+    if (corpo.visibilidade !== 'publico' && corpo.visibilidade !== 'privado') {
+      falha(400, 'Visibilidade inválida');
+    }
+    await store.setVisibilidade(user.id, corpo.visibilidade);
+    return { status: 200, body: { ok: true, visibilidade: corpo.visibilidade } };
   }
 
   /**

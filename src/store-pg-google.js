@@ -128,6 +128,25 @@ function criarMetodosGooglePg(pool, util = {}) {
     return linhaUser(r.rows[0]);
   }
 
+  // --- visibilidade (v1.1 — perfis público/privado) --------------------------
+
+  // 'publico' (default): encontrável por qualquer utilizador. 'privado': só
+  // por quem tem o email ou o telefone (a regra de descoberta vive em
+  // src/friends.js — a store apenas guarda o campo).
+  async function setVisibilidade(userId, visibilidade) {
+    if (visibilidade !== 'publico' && visibilidade !== 'privado') {
+      throw new StoreError('E_INVALID', 'Visibilidade inválida');
+    }
+    const r = await pool.query(
+      'UPDATE users SET visibilidade = $1 WHERE id = $2 RETURNING *',
+      [visibilidade, userId],
+    );
+    if (r.rows.length === 0) {
+      throw new StoreError('E_NOTFOUND', 'Utilizador não encontrado');
+    }
+    return linhaUser(r.rows[0]);
+  }
+
   return {
     getUserByGoogleId,
     getUserByEmail,
@@ -135,6 +154,7 @@ function criarMetodosGooglePg(pool, util = {}) {
     createUserWithGoogle,
     getUserByPhone,
     setPhone,
+    setVisibilidade,
   };
 }
 

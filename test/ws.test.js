@@ -163,7 +163,7 @@ test('auth com token válido responde auth_ok com o utilizador público', async 
   const resposta = await esperarNovaMensagem(cliente, (m) => m.type === 'auth_ok');
   assert.deepStrictEqual(resposta, {
     type: 'auth_ok',
-    user: { id: idAna, username: 'ana_ws', phone: null },
+    user: { id: idAna, username: 'ana_ws', phone: null, visibilidade: 'publico' },
   });
   await fecharCliente(cliente);
 });

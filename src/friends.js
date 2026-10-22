@@ -57,15 +57,16 @@ function traduzErroStore(err) {
 
 function createFriendsHandlers({ store }) {
   // Descoberta de amigos (v1.1): o contacto pode ser nome de utilizador,
-  // email ou telefone — tentamos nesta ordem. O telefone é comparado
-  // normalizado (só dígitos e +), igual à store.
+  // email ou telefone — tentamos nesta ordem. PERFIS PRIVADOS não aparecem
+  // por nome (invisíveis na busca de username); só quem tem o seu EMAIL ou
+  // TELEFONE os encontra. O telefone é comparado normalizado (só dígitos e +).
   async function encontrarAlvo(contacto) {
     if (typeof contacto !== 'string' || contacto.trim() === '') {
       falha(400, 'Indica o amigo: nome de utilizador, email ou telefone');
     }
     const limpo = contacto.trim();
     const porUsername = await store.getUserByUsername(limpo);
-    if (porUsername) return porUsername;
+    if (porUsername && porUsername.visibilidade !== 'privado') return porUsername;
     const porEmail = await store.getUserByEmail(limpo);
     if (porEmail) return porEmail;
     return store.getUserByPhone(limpo);
