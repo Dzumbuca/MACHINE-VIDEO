@@ -11,13 +11,8 @@
 export function converterSrtParaVtt(texto) {
   const limpo = String(texto).replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
   if (/^\s*WEBVTT/.test(limpo)) return limpo;
-  const corrigido = limpo.replace(
-    /^(\d{1,2}:\d{2}:\d{2}),(\d{3}) --> /gm,
-    '$1.$2 --> ',
-  ).replace(
-    /^(\d{1,2}:\d{2}:\d{2}),(\d{3}) --> /gm,
-    '$1.$2 --> ',
-  );
+  // AMBOS os lados do --> recebem ponto no lugar da vírgula (global).
+  const corrigido = limpo.replace(/(\d{1,2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
   return `WEBVTT\n\n${corrigido}`;
 }
 
