@@ -112,6 +112,7 @@ function createGoogleHandlers({ store }) {
       const estadoGuardado = estados.get(state || '');
       estados.delete(state || '');
       if (!code || !estadoGuardado || Date.now() - estadoGuardado > ESTADO_TTL_MS) {
+        console.error('Google callback: falhou em STATE — ausente, expirado (>10 min) ou perdido num reinício do serviço.');
         res.writeHead(302, { Location: destinoErro });
         res.end();
         return;
@@ -129,6 +130,8 @@ function createGoogleHandlers({ store }) {
         }),
       });
       if (!respostaToken.ok) {
+        const corpo = await respostaToken.text().catch(() => '');
+        console.error('Google callback: falhou em TOKEN —', respostaToken.status, corpo.slice(0, 300));
         res.writeHead(302, { Location: destinoErro });
         res.end();
         return;
@@ -143,6 +146,7 @@ function createGoogleHandlers({ store }) {
         Buffer.from(tokens.id_token.split('.')[1], 'base64url').toString('utf8'),
       );
       if (!payload.sub || !payload.email || payload.email_verified === false) {
+        console.error('Google callback: falhou em PERFIL — sub/email ausentes ou email não verificado');
         res.writeHead(302, { Location: destinoErro });
         res.end();
         return;
@@ -152,9 +156,10 @@ function createGoogleHandlers({ store }) {
       const token = await store.createSession(user.id);
       res.writeHead(302, { Location: `${origem(req)}/#auth=${token}` });
       res.end();
-    } catch {
+    } catch (erro) {
       // Qualquer falha (rede, Google em baixo, formato inesperado) volta ao
       // ecrã de entrada com aviso — o servidor nunca fica exposto.
+      console.error('Google callback: falhou inesperadamente —', erro && erro.message ? erro.message : erro);
       res.writeHead(302, { Location: destinoErro });
       res.end();
     }
