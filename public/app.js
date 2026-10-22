@@ -8,6 +8,8 @@ import { api, lerToken, limparToken, guardarToken } from './api.js';
 import { WsClient } from './ws.js';
 import { montarAuth, reporAuth } from './ui/auth.js';
 import * as vistas from './ui/views.js';
+import * as catalogoUi from './ui/catalogo.js';
+import { montarPlayerSolo } from './ui/assistir.js';
 import { iniciarChamadas } from './call.js';
 import { iniciarSessoesFilme } from './movie.js';
 
@@ -41,6 +43,7 @@ iniciar();
 function iniciar() {
   $('tab-conversas').addEventListener('click', () => mudarAba('conversas'));
   $('tab-amigos').addEventListener('click', () => mudarAba('amigos'));
+  $('tab-filmes').addEventListener('click', () => catalogoUi.abrirCatalogo());
   $('btn-sair').addEventListener('click', terminarSessao);
   $('form-amigo').addEventListener('submit', adicionarAmigo);
   $('form-telefone').addEventListener('submit', guardarTelefone);
@@ -533,6 +536,22 @@ window.MV = {
     refsConversa = null;
     // Chamada/sessão de filme no telemóvel: a vista ocupa o ecrã (main visível).
     $('app').classList.add('chat-open');
+    $('main').replaceChildren(nodo);
+  },
+  /** Fecha a vista atual (catálogo/player) e regressa à conversa ou ao vazio. */
+  fecharVista() {
+    if (estado.ativa) abrirConversa(estado.ativa);
+    else fecharConversa();
+  },
+  /** Catálogo (v1.1): ver um filme SOZINHO, sem sessão — player individual. */
+  verSozinho(item) {
+    const nodo = montarPlayerSolo({
+      titulo: item.titulo,
+      url: item.url,
+      aoVoltar: () => catalogoUi.abrirCatalogo(),
+    });
+    $('app').classList.add('chat-open');
+    refsConversa = null;
     $('main').replaceChildren(nodo);
   },
   vistaConversa: () => refsConversa,

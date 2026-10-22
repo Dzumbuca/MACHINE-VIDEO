@@ -163,3 +163,21 @@
     min-width: 0;
   }
 }
+
+/* ---- Catálogo (v1.1): Home de filmes ---------------------------------- */
+
+.catalogo { display: flex; flex-direction: column; gap: 16px; padding: 16px; overflow-y: auto; height: 100%; }
+.catalogo-grelha { display: flex; flex-direction: column; gap: 10px; }
+.catalogo-categoria { color: var(--txt-dim, #9aa0a6); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; margin: 10px 0 2px; }
+.catalogo-cartao {
+  display: flex; gap: 12px; align-items: center; justify-content: space-between;
+  background: #1d1f24; border: 1px solid #2a2d33; border-radius: 10px; padding: 12px 14px;
+}
+.catalogo-info { min-width: 0; }
+.catalogo-info strong { color: #f5a623; }
+.catalogo-desc { margin: 4px 0 0; color: #9aa0a6; font-size: 0.85rem; }
+.catalogo-acoes { display: flex; gap: 8px; flex-shrink: 0; }
+@media (max-width: 760px) {
+  .catalogo-cartao { flex-direction: column; align-items: stretch; }
+  .catalogo-acoes { justify-content: flex-end; }
+}

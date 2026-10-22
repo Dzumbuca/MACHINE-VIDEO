@@ -91,7 +91,23 @@ export function iniciarSessoesFilme() {
     ['session_control', aoControl], ['session_ended', aoEnded], ['error', aoErro],
   ]) soltarHandlers.push(ws.on(tipo, fn));
   MV.criarSessaoFilme = iniciarDaConversa;
+  MV.criarSessaoDoCatalogo = iniciarDoCatalogo; // v1.1: Home do catálogo
   MV.aoSair?.(() => { if (sessao) terminarSessao(); });
+}
+
+/**
+ * Catálogo (v1.1): cria uma sessão a partir de um filme escolhido na Home.
+ * Usa a conversa ATIVA para os convidados; exige uma conversa aberta.
+ */
+export function iniciarDoCatalogo(item) {
+  if (sessao) return toast('Já está numa sessão de filme — saia dela primeiro.', 'erro');
+  const MV = globalThis.window?.MV;
+  const estado = MV?.obterEstado?.();
+  const conv = (estado?.conversas ?? []).find((c) => c.id === estado?.ativa);
+  if (!conv) return toast('Abre uma conversa primeiro (Conversas → escolhe o amigo) e volta ao catálogo.', 'info');
+  const convidados = (conv.memberIds ?? []).filter((id) => id !== euId);
+  if (convidados.length === 0) return toast('Não há ninguém para convidar nesta conversa.', 'erro');
+  abrirModalAnfitriao(conv, convidados, { url: item.url, titulo: item.titulo });
 }
 
 // ---- utilitários -------------------------------------------------------------------
@@ -173,7 +189,7 @@ function iniciarDaConversa(conv) {
   abrirModalAnfitriao(conv, convidados);
 }
 
-function abrirModalAnfitriao(conv, convidados) {
+function abrirModalAnfitriao(conv, convidados, prefilhe = null) {
   const campoTitulo = Object.assign(nodo('input', 'input'), { maxLength: 60, placeholder: 'Título da sessão (opcional)' });
   const campo = campoFicheiro();
   const campoLink = Object.assign(nodo('input', 'input'), {
@@ -203,6 +219,12 @@ function abrirModalAnfitriao(conv, convidados) {
   criar.disabled = true;
   let medido = null; // ficheiro local medido
   let urlMedida = null; // {nome, duracaoSec} do link medido
+  if (prefilhe?.url) {
+    // Vindo do catálogo: link e título pré-preenchidos.
+    campoLink.value = prefilhe.url;
+    campoTitulo.value = prefilhe.titulo || '';
+    atualizarEstadoCriar();
+  }
   function modoEmUso() {
     return campoLink.value.trim() !== '' ? 'link' : 'ficheiro';
   }
