@@ -44,6 +44,12 @@ export const CATALOGO = [
 
 const ORDEM_CATEGORIAS = ['Animação', 'Séries', 'Clássicos', 'Comédia', 'Suspense'];
 
+/** Capa do filme: o Archive serve a miniatura do item em /services/img/<id>. */
+function capaDe(url) {
+  const id = url.split('/download/')[1]?.split('/')[0];
+  return id ? `https://archive.org/services/img/${id}` : null;
+}
+
 /** Cria um <select> com o catálogo (agrupado); ao escolher chama aoEscolher. */
 export function seletorCatalogo(aoEscolher) {
   const doc = globalThis.document;
@@ -135,6 +141,19 @@ export function abrirCatalogo() {
       grelha.appendChild(nodo('h3', 'catalogo-categoria', `${categoria} (${itens.length})`));
       for (const item of itens) {
         const cartao = nodo('article', 'catalogo-cartao');
+        const capa = capaDe(item.url);
+        if (capa) {
+          const img = doc.createElement('img');
+          img.className = 'catalogo-capa';
+          img.loading = 'lazy';
+          img.src = capa;
+          img.alt = `Capa de ${item.titulo}`;
+          img.addEventListener('error', () => {
+            img.replaceWith(nodo('div', 'catalogo-capa catalogo-capa-vazia', '🎬'));
+          });
+          cartao.appendChild(img);
+        }
+        const corpo = nodo('div', 'catalogo-corpo');
         const info = nodo('div', 'catalogo-info');
         info.append(
           nodo('strong', null, `${item.titulo} (${item.ano})`),
@@ -142,10 +161,11 @@ export function abrirCatalogo() {
         );
         const acoes = nodo('div', 'catalogo-acoes');
         acoes.append(
-          botao('▶ Ver sozinho', 'btn btn-sm', () => MV.verSozinho?.(item)),
-          botao('👥 Chamar amigos', 'btn btn-primary btn-sm', () => MV.criarSessaoDoCatalogo?.(item)),
+          botao('▶ Ver', 'btn btn-primary btn-sm', () => MV.verSozinho?.(item)),
+          botao('👥 Amigos', 'btn btn-sm', () => MV.criarSessaoDoCatalogo?.(item)),
         );
-        cartao.append(info, acoes);
+        corpo.append(info, acoes);
+        cartao.appendChild(corpo);
         grelha.appendChild(cartao);
       }
     }
