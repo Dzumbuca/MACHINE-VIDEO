@@ -98,6 +98,19 @@ function createFriendsHandlers({ store }) {
     return { status: 200, body: { ok: true } };
   }
 
+  // v1.1 — recusar pedido RECEBIDO ou cancelar pedido ENVIADO: qualquer uma
+  // das partes remove a pendência (a store valida o envolvimento).
+  async function recusarAmizade(req) {
+    const { user: eu } = await exigirSessao(req, store);
+    const corpo = await lerCorpoJson(req);
+    try {
+      await store.removerPedido(corpo.requestId, eu.id);
+    } catch (err) {
+      traduzErroStore(err);
+    }
+    return { status: 200, body: { ok: true } };
+  }
+
   async function listar(req) {
     const { user: eu } = await exigirSessao(req, store);
     // O telefone é visível SÓ ao dono (/api/me). A lista de amigos projeta
@@ -127,6 +140,7 @@ function createFriendsHandlers({ store }) {
     'GET /api/friends': listar,
     'POST /api/friends/request': pedirAmizade,
     'POST /api/friends/accept': aceitarAmizade,
+    'POST /api/friends/reject': recusarAmizade,
   };
 
   /**

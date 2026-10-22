@@ -295,6 +295,29 @@ async function createStorePg(connectionString, { reset = false, ...opcoesPool } 
     });
   }
 
+  // v1.1 — recusar/cancelar: qualquer uma das PARTES (de ou para) remove a
+  // pendência. O par fica livre para um novo pedido no futuro. Status
+  // 'accepted' → E_DUP (a amizade já existe).
+  async function removerPedido(requestId, userId) {
+    return comTransacao(async (client) => {
+      const r = await client.query(
+        'SELECT id, from_id, to_id, status FROM friend_requests WHERE id = $1 FOR UPDATE',
+        [requestId],
+      );
+      if (r.rows.length === 0) {
+        throw new StoreError('E_NOTFOUND', 'Pedido de amizade não encontrado');
+      }
+      const pedido = r.rows[0];
+      if (pedido.from_id !== userId && pedido.to_id !== userId) {
+        throw new StoreError('E_FORBIDDEN', 'Não é parte deste pedido');
+      }
+      if (pedido.status !== 'pending') {
+        throw new StoreError('E_DUP', 'Pedido de amizade já processado');
+      }
+      await client.query('DELETE FROM friend_requests WHERE id = $1', [requestId]);
+    });
+  }
+
   async function listFriends(userId) {
     await exigeUser(pool, userId);
     const r = await pool.query(
@@ -493,6 +516,7 @@ async function createStorePg(connectionString, { reset = false, ...opcoesPool } 
     // amizades
     createFriendRequest,
     acceptFriendRequest,
+    removerPedido,
     listFriends,
     areFriends,
     listFriendRequests,

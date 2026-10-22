@@ -31,6 +31,10 @@
  *                idempotente, e sem erro para um userId sem sessões)
  *   createFriendRequest(fromId, toId)              → pedido
  *   acceptFriendRequest(requestId, toId)           → pedido atualizado
+ *   removerPedido(requestId, userId)               → undefined (aditivo,
+ *                v1.1: RECUSAR/cancelar — qualquer uma das PARTES remove a
+ *                pendência; o par fica livre para novo pedido; inexistente →
+ *                E_NOTFOUND; terceiro → E_FORBIDDEN; já aceite → E_DUP)
  *   listFriends(userId)                            → [user]
  *   areFriends(a, b)                               → boolean
  *   listFriendRequests(userId)                     → { pendingIn, pendingOut }

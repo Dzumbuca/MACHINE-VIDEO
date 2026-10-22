@@ -103,6 +103,8 @@ export const api = {
     pedir('/api/friends/request', { method: 'POST', body: { contacto } }),
   aceitarAmizade: (requestId) =>
     pedir('/api/friends/accept', { method: 'POST', body: { requestId } }),
+  recusarAmizade: (requestId) =>
+    pedir('/api/friends/reject', { method: 'POST', body: { requestId } }),
 
   // --- conversas ---------------------------------------------------------------
   conversas: () => pedir('/api/conversations'),

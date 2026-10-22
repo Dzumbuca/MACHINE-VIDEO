@@ -96,7 +96,7 @@ export function renderConversas(listaEl, itens) {
  * Preenche a zona de pedidos e a lista de amigos.
  * `dados`: {amigos:[{id,username,online}], pendentesIn:[{id,from}], pendentesOut:[{id,to}]}
  */
-export function renderAmigos({ zonaPedidos, listaAmigos }, dados, { aoAbrir, aoAceitar }) {
+export function renderAmigos({ zonaPedidos, listaAmigos }, dados, { aoAbrir, aoAceitar, aoRecusar }) {
   zonaPedidos.replaceChildren();
 
   for (const pedido of dados.pendentesIn) {
@@ -109,13 +109,31 @@ export function renderAmigos({ zonaPedidos, listaAmigos }, dados, { aoAbrir, aoA
     aceitar.type = 'button';
     aceitar.dataset.rid = pedido.id;
     aceitar.addEventListener('click', () => aoAceitar(pedido.id));
-    linha.append(info, aceitar);
+    const recusar = el('button', ['btn btn-sm'], 'Recusar');
+    recusar.type = 'button';
+    recusar.dataset.rid = pedido.id;
+    recusar.addEventListener('click', () => aoRecusar(pedido.id));
+    linha.append(info, aceitar, recusar);
     zonaPedidos.appendChild(linha);
   }
 
   if (dados.pendentesOut.length > 0) {
-    const nomes = dados.pendentesOut.map((p) => p.to.username).join(', ');
-    zonaPedidos.appendChild(el('p', ['pedidos-fora'], `À espera de resposta de: ${nomes}`));
+    const zonaFora = el('div', ['pedidos-fora']);
+    zonaFora.append(el('span', ['pedidos-fora-titulo'], 'À espera de resposta:'));
+    for (const p of dados.pendentesOut) {
+      const linha = el('div', ['pedido']);
+      linha.append(el('span', ['avatar'], inicialDe(p.to.username)));
+      const info = el('div', ['pedido-info']);
+      info.append(el('span', ['pedido-nome'], p.to.username));
+      info.append(el('span', ['pedido-sub'], 'Pedido enviado por si'));
+      const cancelar = el('button', ['btn btn-sm'], 'Cancelar');
+      cancelar.type = 'button';
+      cancelar.dataset.rid = p.id;
+      cancelar.addEventListener('click', () => aoRecusar(p.id));
+      linha.append(info, cancelar);
+      zonaFora.appendChild(linha);
+    }
+    zonaPedidos.appendChild(zonaFora);
   }
 
   listaAmigos.replaceChildren();

@@ -238,6 +238,24 @@ function createStoreMemory() {
     return { ...pedido };
   }
 
+  // v1.1 — recusar/cancelar: qualquer uma das PARTES (de ou para) remove a
+  // pendência. Idempotência: pedido inexistente → E_NOTFOUND; já aceite →
+  // E_DUP (a amizade existe — usar outra via). O par fica livre para um novo
+  // pedido no futuro.
+  function removerPedido(requestId, userId) {
+    const pedido = friendRequestsById.get(requestId);
+    if (!pedido) {
+      throw new StoreError('E_NOTFOUND', 'Pedido de amizade não encontrado');
+    }
+    if (pedido.fromId !== userId && pedido.toId !== userId) {
+      throw new StoreError('E_FORBIDDEN', 'Não é parte deste pedido');
+    }
+    if (pedido.status !== 'pending') {
+      throw new StoreError('E_DUP', 'Pedido de amizade já processado');
+    }
+    friendRequestsById.delete(requestId);
+  }
+
   function listFriends(userId) {
     exigeUser(userId);
     const amigos = friendIdsByUser.get(userId) ?? new Set();
@@ -373,6 +391,7 @@ function createStoreMemory() {
     // amizades
     createFriendRequest,
     acceptFriendRequest,
+    removerPedido,
     listFriends,
     areFriends,
     listFriendRequests,

@@ -325,8 +325,18 @@ function renderAmigos() {
       pendentesIn: estado.pendentesIn,
       pendentesOut: estado.pendentesOut,
     },
-    { aoAbrir: abrirComAmigo, aoAceitar: aceitarAmizade },
+    { aoAbrir: abrirComAmigo, aoAceitar: aceitarAmizade, aoRecusar: recusarAmizade },
   );
+}
+
+async function recusarAmizade(requestId) {
+  try {
+    await api.recusarAmizade(requestId);
+    vistas.toast('Pedido removido', 'ok');
+  } catch (e) {
+    vistas.toast(e.erro || 'Não foi possível remover o pedido', 'erro');
+  }
+  await carregarAmigos();
 }
 
 function ordenarConversas() {
