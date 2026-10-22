@@ -3,6 +3,7 @@
 const { utilizadorPublico } = require('./http-util');
 const { criarPresenca } = require('./presence');
 const { createChatHandlers } = require('./chat');
+const { criarRele } = require('./relay');
 const { createSignalHandlers } = require('./signal');
 const { createSessionHandlers } = require('./session');
 
@@ -39,8 +40,25 @@ const { createSessionHandlers } = require('./session');
 
 const TEMPO_LIMITE_AUTH_MS_PADRAO = 5000;
 
-function criarHub({ store, wss, authTimeoutMs = TEMPO_LIMITE_AUTH_MS_PADRAO }) {
+function criarHub({ store, wss, authTimeoutMs = TEMPO_LIMITE_AUTH_MS_PADRAO, rele: opcoesRele = null }) {
   const presenca = criarPresenca({ store });
+
+  // Ponte de tempo real (v1.1): com DATABASE_URL, os envelopes dirigidos a
+  // um utilizador atravessam servidores via pg_notify — o Render e o PC
+  // tornam-se UMA rede (ver src/relay.js).
+  let rele = null;
+  if (opcoesRele?.connectionString) {
+    rele = criarRele({
+      connectionString: opcoesRele.connectionString,
+      aoReceber: (dados) => {
+        // Entrega LOCAL da ponte — sem re-publicar (o `origem` da ponte
+        // evita que o servidor de origem receba o seu próprio envelope).
+        for (const ws of presenca.sockets(dados.userId)) {
+          enviarDireto(ws, dados.envelope);
+        }
+      },
+    });
+  }
 
   /** Envia um envelope JSON a um único socket, sem nunca lançar. */
   function enviarDireto(ws, envelope) {
@@ -56,6 +74,7 @@ function criarHub({ store, wss, authTimeoutMs = TEMPO_LIMITE_AUTH_MS_PADRAO }) {
     for (const ws of presenca.sockets(userId)) {
       enviarDireto(ws, envelope);
     }
+    rele?.publicar({ userId, envelope }); // atravessa servidores (v1.1)
   }
 
   /**
@@ -214,6 +233,8 @@ function criarHub({ store, wss, authTimeoutMs = TEMPO_LIMITE_AUTH_MS_PADRAO }) {
 
   // Erros do próprio servidor WebSocket (upgrade, etc.) não derrubam o processo.
   wss.on('error', () => {});
+
+  return { rele }; // o encerramento gracioso (server.js) usa rele.parar()
 }
 
 module.exports = { criarHub };

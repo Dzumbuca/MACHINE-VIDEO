@@ -28,7 +28,18 @@ function createServer({ store } = {}) {
       maxPayload: 1024 * 1024,
       ...opcoesWss,
     });
-    criarHub({ store, wss, authTimeoutMs });
+    // Ponte de tempo real (v1.1): com DATABASE_URL, envelopes atravessam
+    // servidores (Render ↔ PC) via pg_notify — ver src/relay.js.
+    const hub = criarHub({
+      store,
+      wss,
+      authTimeoutMs,
+      rele: process.env.DATABASE_URL ? { connectionString: process.env.DATABASE_URL } : null,
+    });
+    // O fecho gracioso do rele fica no encerramento do processo (SIGTERM):
+    // attach() pode ser chamado várias vezes nos testes — guardamos o parar
+    // na própria instância wss para o require.main o alcançar.
+    if (hub.rele) wss.rele = hub.rele;
     return wss;
   }
 
@@ -55,6 +66,7 @@ if (require.main === module) {
       // Render/infra mandam SIGTERM ao reiniciar o serviço: fecha WS, HTTP e
       // a ligação à base de dados antes de sair.
       async function encerrar() {
+        wss.rele?.parar(); // ponte de tempo real (v1.1)
         wss.close();
         http.close();
         if (typeof store.close === 'function') await store.close();
