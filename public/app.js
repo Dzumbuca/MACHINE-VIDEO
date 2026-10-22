@@ -94,7 +94,7 @@ function mostrarAuth() {
   }
   $('app').hidden = true;
   $('auth').hidden = false;
-  document.body.classList.remove('chat-open');
+  $('app').classList.remove('chat-open');
   reporAuth();
 }
 
@@ -401,12 +401,13 @@ function abrirModalGrupo() {
 }
 
 
-async function abrirConversa(id) {
+function abrirConversa(id) {
   const conv = estado.conversas.find((c) => c.id === id);
   if (!conv || !estado.utilizador) return;
   estado.ativa = id;
   estado.naoLidas.delete(id);
-  document.body.classList.add('chat-open');
+  // A classe vive no #app (igual ao CSS responsivo: .app.chat-open .main)
+  $('app').classList.add('chat-open');
   renderConversas();
 
   if (!estado.mensagens.has(id)) await carregarMensagens(id);
@@ -478,7 +479,7 @@ function acoesConversa(refs, conv) {
 }
 
 function fecharConversa() {
-  document.body.classList.remove('chat-open');
+  $('app').classList.remove('chat-open');
   estado.ativa = null;
   refsConversa = null;
   vistas.mostrarVazio($('main'), { temAmigos: estado.amigos.size > 0 });
@@ -528,10 +529,12 @@ window.MV = {
   abrirConversa,
   zonaPrincipal: () => $('main'),
   /** Substitui a zona principal por uma vista própria (ex.: chamada em curso). */
-  montarVistaPrincipal(nodo) {
-    refsConversa = null;
-    $('main').replaceChildren(nodo);
-  },
+function montarVistaPrincipal(nodo) {
+  refsConversa = null;
+  // Chamada/sessão de filme no telemóvel: a vista ocupa o ecrã (main visível).
+  $('app').classList.add('chat-open');
+  $('main').replaceChildren(nodo);
+}
   vistaConversa: () => refsConversa,
   /** Registra um callback executado quando a sessão termina. */
   aoSair(cb) {
