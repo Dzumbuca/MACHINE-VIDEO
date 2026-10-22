@@ -214,8 +214,11 @@ function abrirModalAnfitriao(conv, convidados, prefilhe = null) {
   const modal = abrirModal({
     titulo: 'Sessão de filme',
     corpo: [rotuloTitulo, rotuloFicheiro, rotuloLink, aviso, nota],
-    acoes: [botao('Cancelar'), criar],
+    acoes: [criar],
   });
+  // Cancelar precisa do modal.fechar — criado DEPOIS de abrirModal devolver.
+  const cancelar = botao('Cancelar', 'btn', () => modal.fechar());
+  modal.overlay.querySelector('.modal-acoes')?.prepend(cancelar);
   criar.disabled = true;
   let medido = null; // ficheiro local medido
   let urlMedida = null; // {nome, duracaoSec} do link medido
