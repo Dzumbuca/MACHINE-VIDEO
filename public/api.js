@@ -94,9 +94,11 @@ export const api = {
     pedir('/api/recover', { method: 'POST', body: { username, secAnswer, newPassword } }),
 
   // --- amizades ---------------------------------------------------------------
+  guardarTelefone: (phone) =>
+    pedir('/api/me/phone', { method: 'POST', body: { phone } }),
   amigos: () => pedir('/api/friends'),
-  pedirAmizade: (username) =>
-    pedir('/api/friends/request', { method: 'POST', body: { username } }),
+  pedirAmizade: (contacto) =>
+    pedir('/api/friends/request', { method: 'POST', body: { contacto } }),
   aceitarAmizade: (requestId) =>
     pedir('/api/friends/accept', { method: 'POST', body: { requestId } }),
 

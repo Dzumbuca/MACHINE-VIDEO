@@ -53,6 +53,11 @@
  *                a um utilizador existente com o mesmo email verificado)
  *   createUserWithGoogle({username, email, googleId}) → user (sem senha nem
  *                pergunta de segurança; o chamador garante username único)
+ *   getUserByPhone(telefone)                       → user | null (aditivo,
+ *                v1.1: compara o telefone NORMALIZADO — só dígitos e +)
+ *   setPhone(userId, telefone)                     → user (aditivo, v1.1:
+ *                guarda o telefone; string vazia → remove; <7 ou >15
+ *                dígitos → E_INVALID)
  *
  * Formas dos objetos (mínimo garantido):
  *   user   = { id, username, passHash, secQ, secA, createdAt }

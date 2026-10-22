@@ -94,3 +94,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id
   ON users (google_id) WHERE google_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email
   ON users (email) WHERE email IS NOT NULL;
+
+-- v1.1 — descoberta de amigos por telefone (aditivo, idempotente)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone
+  ON users (phone) WHERE phone IS NOT NULL;

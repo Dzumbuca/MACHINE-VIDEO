@@ -80,8 +80,8 @@ function criarMetodosGooglePg(pool, util = {}) {
   async function createUserWithGoogle({ username, email, googleId }) {
     try {
       const r = await pool.query(
-        `INSERT INTO users (id, username, pass_hash, sec_q, sec_a, email, google_id)
-         VALUES ($1, $2, NULL, NULL, NULL, $3, $4)
+        `INSERT INTO users (id, username, pass_hash, sec_q, sec_a, email, google_id, phone)
+         VALUES ($1, $2, NULL, NULL, NULL, $3, $4, NULL)
          RETURNING *`,
         [novoId(), username, email, googleId],
       );
@@ -91,11 +91,50 @@ function criarMetodosGooglePg(pool, util = {}) {
     }
   }
 
+  // --- telefone (v1.1 — descoberta de amigos) --------------------------------
+
+  const REGEX_LIXO_TELEFONE = /[^0-9+]/g;
+
+  async function getUserByPhone(telefone) {
+    if (telefone == null) return null;
+    const alvo = String(telefone).replace(REGEX_LIXO_TELEFONE, '');
+    if (alvo === '') return null;
+    const r = await pool.query(
+      `SELECT * FROM users
+       WHERE phone IS NOT NULL
+         AND regexp_replace(phone, '[^0-9+]', '', 'g') = $1`,
+      [alvo],
+    );
+    return r.rows[0] ? linhaUser(r.rows[0]) : null;
+  }
+
+  // Guarda/atualiza o telefone do utilizador (string vazia → remove).
+  async function setPhone(userId, telefone) {
+    let valor = null;
+    if (telefone != null && String(telefone).trim() !== '') {
+      const limpo = String(telefone).replace(REGEX_LIXO_TELEFONE, '');
+      if (limpo.length < 7 || limpo.length > 15) {
+        throw new StoreError('E_INVALID', 'Número de telefone inválido');
+      }
+      valor = limpo;
+    }
+    const r = await pool.query(
+      'UPDATE users SET phone = $1 WHERE id = $2 RETURNING *',
+      [valor, userId],
+    );
+    if (r.rows.length === 0) {
+      throw new StoreError('E_NOTFOUND', 'Utilizador não encontrado');
+    }
+    return linhaUser(r.rows[0]);
+  }
+
   return {
     getUserByGoogleId,
     getUserByEmail,
     linkGoogleToUser,
     createUserWithGoogle,
+    getUserByPhone,
+    setPhone,
   };
 }
 

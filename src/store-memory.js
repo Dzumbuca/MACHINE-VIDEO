@@ -104,10 +104,43 @@ function createStoreMemory() {
   function createUserWithGoogle({ username, email, googleId }) {
     const user = {
       id: novoId(), username, passHash: null, secQ: null, secA: null,
-      email, googleId, createdAt: agora(),
+      email, googleId, phone: null, createdAt: agora(),
     };
     usersById.set(user.id, user);
     userIdByUsername.set(username, user.id);
+    return { ...user };
+  }
+
+  // --- telefone (v1.1 — descoberta de amigos) --------------------------------
+
+  function normalizarTelefone(t) {
+    return String(t).replace(/[^0-9+]/g, '');
+  }
+
+  function getUserByPhone(telefone) {
+    if (telefone == null) return null;
+    const alvo = normalizarTelefone(telefone);
+    if (alvo === '') return null;
+    for (const user of usersById.values()) {
+      if (user.phone != null && normalizarTelefone(user.phone) === alvo) {
+        return { ...user };
+      }
+    }
+    return null;
+  }
+
+  // Guarda/atualiza o telefone do utilizador (string vazia → remove).
+  function setPhone(userId, telefone) {
+    const user = exigeUser(userId);
+    if (telefone != null && String(telefone).trim() !== '') {
+      const limpo = normalizarTelefone(telefone);
+      if (limpo.length < 7 || limpo.length > 15) {
+        throw new StoreError('E_INVALID', 'Número de telefone inválido');
+      }
+      user.phone = limpo;
+    } else {
+      user.phone = null;
+    }
     return { ...user };
   }
 
@@ -311,6 +344,9 @@ function createStoreMemory() {
     getUserByEmail,
     linkGoogleToUser,
     createUserWithGoogle,
+    // telefone (v1.1)
+    getUserByPhone,
+    setPhone,
     // sessões
     createSession,
     getUserByToken,

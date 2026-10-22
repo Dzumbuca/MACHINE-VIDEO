@@ -56,10 +56,26 @@ function traduzErroStore(err) {
 }
 
 function createFriendsHandlers({ store }) {
+  // Descoberta de amigos (v1.1): o contacto pode ser nome de utilizador,
+  // email ou telefone — tentamos nesta ordem. O telefone é comparado
+  // normalizado (só dígitos e +), igual à store.
+  async function encontrarAlvo(contacto) {
+    if (typeof contacto !== 'string' || contacto.trim() === '') {
+      falha(400, 'Indica o amigo: nome de utilizador, email ou telefone');
+    }
+    const limpo = contacto.trim();
+    const porUsername = await store.getUserByUsername(limpo);
+    if (porUsername) return porUsername;
+    const porEmail = await store.getUserByEmail(limpo);
+    if (porEmail) return porEmail;
+    return store.getUserByPhone(limpo);
+  }
+
   async function pedirAmizade(req) {
     const { user: eu } = await exigirSessao(req, store);
     const corpo = await lerCorpoJson(req);
-    const alvo = await store.getUserByUsername(corpo.username);
+    const contacto = corpo.contacto ?? corpo.username;
+    const alvo = await encontrarAlvo(contacto);
     if (!alvo) falha(404, 'Utilizador não encontrado');
     let pedido;
     try {
@@ -83,7 +99,10 @@ function createFriendsHandlers({ store }) {
 
   async function listar(req) {
     const { user: eu } = await exigirSessao(req, store);
-    const friends = (await store.listFriends(eu.id)).map(utilizadorPublico);
+    // O telefone é visível SÓ ao dono (/api/me). A lista de amigos projeta
+    // {id, username} explicitamente — nunca utilizadorPublico (leak de phone).
+    const friends = (await store.listFriends(eu.id))
+      .map((u) => ({ id: u.id, username: u.username }));
     const { pendingIn, pendingOut } = await store.listFriendRequests(eu.id);
     return {
       status: 200,

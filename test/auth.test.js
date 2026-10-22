@@ -56,14 +56,14 @@ test('ciclo completo: registra, loga, /api/me com Bearer e logout invalida o tok
   assert.strictEqual(loginRes.status, 200);
   const login = await loginRes.json();
   assert.match(login.token, /^[0-9a-f]{64}$/, 'token sao 32 bytes em hex');
-  assert.deepStrictEqual(Object.keys(login.user).sort(), ['id', 'username']);
+  assert.deepStrictEqual(Object.keys(login.user).sort(), ['id', 'phone', 'username']);
   assert.strictEqual(login.user.id, registro.userId);
   assert.strictEqual(login.user.username, 'ana_ciclo');
 
   const meRes = await jsonFetch('/api/me', { token: login.token });
   assert.strictEqual(meRes.status, 200);
   assert.deepStrictEqual(await meRes.json(), {
-    user: { id: registro.userId, username: 'ana_ciclo' },
+    user: { id: registro.userId, username: 'ana_ciclo', phone: null },
   });
 
   const logoutRes = await jsonFetch('/api/logout', { method: 'POST', token: login.token });

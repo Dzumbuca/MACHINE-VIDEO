@@ -179,7 +179,19 @@ function createAuthHandlers({ store }) {
     'POST /api/logout': logout,
     'POST /api/recover': recuperar,
     'GET /api/me': perfil,
+    'POST /api/me/phone': guardarTelefone,
   };
+
+  // Telefone do utilizador (v1.1 — descoberta de amigos). Vazio → remove.
+  async function guardarTelefone(req) {
+    const { user } = await exigirSessao(req, store);
+    const corpo = await lerCorpoJson(req);
+    if (typeof corpo.phone !== 'string') {
+      falha(400, 'Pedido inválido');
+    }
+    const atualizado = await store.setPhone(user.id, corpo.phone.trim());
+    return { status: 200, body: { ok: true, phone: atualizado.phone ?? null } };
+  }
 
   /**
    * Devolve o handler da rota pedida ou null. O handler devolvido nunca

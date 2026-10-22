@@ -43,6 +43,7 @@ function iniciar() {
   $('tab-amigos').addEventListener('click', () => mudarAba('amigos'));
   $('btn-sair').addEventListener('click', terminarSessao);
   $('form-amigo').addEventListener('submit', adicionarAmigo);
+  $('form-telefone').addEventListener('submit', guardarTelefone);
   $('btn-novo-grupo').addEventListener('click', abrirModalGrupo);
   $('lista-conversas').addEventListener('click', (ev) => {
     const item = ev.target.closest('.item[data-id]');
@@ -51,6 +52,12 @@ function iniciar() {
 
   montarAuth({ aoEntrar: entrarAplicacao });
   retomarSessao();
+}
+
+// Preenche o campo de telefone com o valor guardado (o /api/me devolve-o).
+function preencherTelefone(user) {
+  const campo = $('meu-telefone');
+  if (campo && user && user.phone != null) campo.value = user.phone;
 }
 
 async function retomarSessao() {
@@ -92,6 +99,7 @@ function mostrarAuth() {
 }
 
 function entrarAplicacao(utilizador) {
+  preencherTelefone(utilizador);
   estado.utilizador = utilizador;
   $('auth').hidden = true;
   $('app').hidden = false;
@@ -325,15 +333,29 @@ function mudarAba(aba) {
 async function adicionarAmigo(ev) {
   ev.preventDefault();
   const campo = $('amigo-nome');
-  const nome = campo.value.trim();
-  if (!nome) return;
+  const contacto = campo.value.trim();
+  if (!contacto) return;
   try {
-    await api.pedirAmizade(nome);
+    await api.pedirAmizade(contacto);
     campo.value = '';
-    vistas.toast(`Pedido enviado a ${nome}`, 'ok');
+    vistas.toast(`Pedido enviado a ${contacto}`, 'ok');
     await carregarAmigos();
   } catch (e) {
-    vistas.toast(e.erro || 'Não foi possível enviar o pedido', 'erro');
+    const dica = e.status === 404
+      ? 'Amigo não encontrado — confirma o nome, email ou telefone (ele define o telefone no painel Amigos)'
+      : (e.erro || 'Não foi possível enviar o pedido');
+    vistas.toast(dica, 'erro');
+  }
+}
+
+async function guardarTelefone(ev) {
+  ev.preventDefault();
+  const campo = $('meu-telefone');
+  try {
+    const r = await api.guardarTelefone(campo.value.trim());
+    vistas.toast(r.phone ? 'Telefone guardado — os amigos já podem encontrar-te' : 'Telefone removido', 'ok');
+  } catch (e) {
+    vistas.toast(e.erro || e.status === 400 ? 'Número inválido (7–15 dígitos)' : 'Não foi possível guardar', 'erro');
   }
 }
 

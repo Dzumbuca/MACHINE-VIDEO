@@ -164,16 +164,26 @@
             <input
               id="amigo-nome"
               class="input"
-              placeholder="Adicionar amigo (nome exato)"
-              maxlength="20"
+              placeholder="Amigo: nome, email ou telefone"
+              maxlength="60"
               required
-              aria-label="Nome exato do utilizador a adicionar"
+              aria-label="Nome de utilizador, email ou telefone do amigo"
             />
             <button class="btn btn-primary btn-sm" type="submit">Adicionar</button>
           </form>
           <div id="pedidos-zona" class="pedidos-zona"></div>
           <h2 class="panel-title">Amigos</h2>
           <ul id="lista-amigos" class="lista"></ul>
+          <form id="form-telefone" class="add-amigo" autocomplete="off" style="margin-top:10px">
+            <input
+              id="meu-telefone"
+              class="input"
+              placeholder="O teu telefone (p/ amigos acharem-te)"
+              maxlength="20"
+              aria-label="O teu número de telefone"
+            />
+            <button class="btn btn-sm" type="submit">Guardar</button>
+          </form>
         </section>
       </aside>
 

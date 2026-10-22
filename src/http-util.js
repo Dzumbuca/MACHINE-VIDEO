@@ -65,9 +65,11 @@ function lerCorpoJson(req, maxBytes = MAX_BODY_BYTES) {
   });
 }
 
-/** Projeta o user da store para o formato público (sem passHash/secA). */
+/** Projeta o user da store para o formato público (sem passHash/secA).
+ *  phone (v1.1): o próprio utilizador vê o telefone no perfil — nunca é
+ *  exposto a outros (as listas de amigos usam {id, username}). */
 function utilizadorPublico(user) {
-  return { id: user.id, username: user.username };
+  return { id: user.id, username: user.username, phone: user.phone ?? null };
 }
 
 /** Devolve { token, user } da sessão Bearer; 401 sem sessão ou inválida.
