@@ -497,3 +497,45 @@ test('tipo de sessão desconhecido continua E_UNKNOWN_TYPE (handlers não captur
 
   await fecharCliente(anaCli);
 });
+
+// --- v1.1: link direto do filme (movieUrl) ---------------------------------------
+
+test('session_create com movieUrl: o link chega ao convite e ao ack; sessão funciona fim-a-fim', async () => {
+  const brunoCli = await clienteAutenticado(bruno);
+  const anaCli = await clienteAutenticado(ana);
+
+  const promessaConvite = esperarNovaMensagem(brunoCli, (m) => m.type === 'session_invite');
+  const promessaAck = esperarNovaMensagem(anaCli, (m) => m.type === 'session_created');
+  anaCli.enviar({
+    type: 'session_create', title: 'Clássico do Archive', fileName: 'his_girl_friday_512kb.mp4',
+    durationSec: 5400, toUserIds: [bruno.id],
+    movieUrl: 'https://archive.org/download/his_girl_friday/his_girl_friday_512kb.mp4',
+  });
+  const convite = await promessaConvite;
+  assert.equal(convite.movieUrl, 'https://archive.org/download/his_girl_friday/his_girl_friday_512kb.mp4');
+  const ack = await promessaAck;
+  assert.equal(ack.movieUrl, convite.movieUrl);
+
+  // Convidado entra com fileMatches:true (todos veem a MESMA cópia pelo link)
+  const membro = await juntarBruno(brunoCli, convite.sessionId, true);
+  assert.equal(membro.fileMatches, true);
+
+  // Controle do anfitrião continua a funcionar (R9 fim-a-fim)
+  const promessaControle = esperarNovaMensagem(brunoCli, (m) => m.type === 'session_control');
+  anaCli.enviar({
+    type: 'session_control', sessionId: convite.sessionId,
+    action: 'pause', positionSec: 30, atMs: Date.now(),
+  });
+  const controle = await promessaControle;
+  assert.equal(controle.action, 'pause');
+});
+
+test('session_create com movieUrl inválido (não-http) → E_INVALID', async () => {
+  const brunoCli = await clienteAutenticado(bruno);
+  const anaCli = await clienteAutenticado(ana);
+  anaCli.enviar({
+    type: 'session_create', title: 'T', fileName: 'f.mp4', durationSec: 100,
+    toUserIds: [bruno.id], movieUrl: 'ftp://exemplo.invalid/filme.mp4',
+  });
+  await erroDe(anaCli, 'E_INVALID');
+});

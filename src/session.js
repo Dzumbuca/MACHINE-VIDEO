@@ -151,7 +151,7 @@ function createSessionHandlers({ store, enviarDireto, enviarPara }) {
   // --- session_create ---------------------------------------------------------
 
   async function tratarCriacao(envelope, user, ws) {
-    const { title, fileName, durationSec, toUserIds } = envelope;
+    const { title, fileName, durationSec, toUserIds, movieUrl } = envelope;
     if (
       typeof title !== 'string' ||
       typeof fileName !== 'string' ||
@@ -160,6 +160,25 @@ function createSessionHandlers({ store, enviarDireto, enviarPara }) {
     ) {
       erro(ws, 'E_INVALID');
       return;
+    }
+    // v1.1 — link direto do filme (opcional): http(s) público, ≤2048 chars.
+    let urlFilme = null;
+    if (movieUrl !== undefined && movieUrl !== null) {
+      if (typeof movieUrl !== 'string' || movieUrl.length > 2048) {
+        erro(ws, 'E_INVALID');
+        return;
+      }
+      try {
+        const u = new URL(movieUrl);
+        if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+          erro(ws, 'E_INVALID');
+          return;
+        }
+        urlFilme = movieUrl;
+      } catch {
+        erro(ws, 'E_INVALID');
+        return;
+      }
     }
     const convidados = await validarConvidados(ws, user, toUserIds);
     if (!convidados) return;
@@ -177,6 +196,7 @@ function createSessionHandlers({ store, enviarDireto, enviarPara }) {
       title,
       fileName,
       durationSec,
+      movieUrl: urlFilme,
       lastControl: null,
     });
 
@@ -187,12 +207,16 @@ function createSessionHandlers({ store, enviarDireto, enviarPara }) {
       title,
       fileName,
       durationSec,
+      ...(urlFilme ? { movieUrl: urlFilme } : {}),
     };
     for (const convidado of convidados) {
       enviarPara(convidado, convite); // best-effort: offline fica sem convite
     }
     // R9: ack ao ANFITRIÃO — o mesmo id gerado, para poder controlar a sessão.
-    enviarDireto(ws, { type: 'session_created', sessionId, title, fileName, durationSec });
+    enviarDireto(ws, {
+      type: 'session_created', sessionId, title, fileName, durationSec,
+      ...(urlFilme ? { movieUrl: urlFilme } : {}),
+    });
   }
 
   // --- session_join -----------------------------------------------------------

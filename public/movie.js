@@ -14,6 +14,7 @@
  */
 
 import { toast } from './ui/views.js';
+import { seletorCatalogo } from './ui/catalogo.js';
 import { mostrarChip, removerChip, abrirModal, botao, nodo, restaurarZonaPrincipal } from './call.js';
 
 const INTERVALO_DRIFT_MS = 2000;
@@ -107,6 +108,7 @@ function novaSessao(parcial) {
     titulo: parcial.titulo ?? 'Sessão de filme', fileName: parcial.fileName ?? '',
     durationSec: parcial.durationSec ?? 0, convId: parcial.convId ?? null,
     ficheiro: parcial.ficheiro ?? null, objectUrl: null,
+    movieUrl: parcial.movieUrl ?? null,
     fileMatches: Boolean(parcial.fileMatches), membros: new Map(),
     ultimoControle: null, refs: null, chip: null, timer: null, avisouAutoplay: false,
   };
@@ -132,6 +134,33 @@ function prepararFicheiro(file) {
   });
 }
 
+/** Mede a duração de um vídeo por URL direta (http/https); null se falhar. */
+function medirUrl(url) {
+  return new Promise((resolve) => {
+    const v = nodo('video');
+    v.preload = 'metadata';
+    let decidido = false;
+    const falha = () => {
+      if (decidido) return;
+      decidido = true;
+      clearTimeout(timer);
+      resolve(null);
+    };
+    const timer = setTimeout(falha, 15000); // link lento ou pendurado
+    v.onerror = falha;
+    v.onloadedmetadata = () => {
+      if (decidido) return;
+      decidido = true;
+      clearTimeout(timer);
+      const d = v.duration;
+      let nome = 'filme';
+      try { nome = decodeURIComponent(new URL(url).pathname.split('/').pop() || nome); } catch {}
+      resolve(Number.isFinite(d) && d > 0 ? { nome, duracaoSec: d } : null);
+    };
+    v.src = url;
+  });
+}
+
 /** Campo de escolha de ficheiro com o filtro MP4/WebM do enunciado. */
 const campoFicheiro = () => Object.assign(nodo('input', 'input'), { type: 'file', accept: 'video/mp4,video/webm' });
 
@@ -147,6 +176,9 @@ function iniciarDaConversa(conv) {
 function abrirModalAnfitriao(conv, convidados) {
   const campoTitulo = Object.assign(nodo('input', 'input'), { maxLength: 60, placeholder: 'Título da sessão (opcional)' });
   const campo = campoFicheiro();
+  const campoLink = Object.assign(nodo('input', 'input'), {
+    type: 'url', maxLength: 2048, placeholder: 'https://…/filme.mp4 (link direto MP4/WebM)',
+  });
   const ficha = nodo('p', 'hint');
   const aviso = nodo('p', 'form-erro');
   aviso.hidden = true;
@@ -154,16 +186,56 @@ function abrirModalAnfitriao(conv, convidados) {
   rotuloTitulo.appendChild(campoTitulo);
   const rotuloFicheiro = nodo('label', 'label', 'Ficheiro do filme (MP4 ou WebM)');
   rotuloFicheiro.append(campo, ficha);
+  const rotuloLink = nodo('label', 'label', 'Ou um LINK direto do filme (Archive.org, R2, Supabase…)');
+  rotuloLink.appendChild(campoLink);
+  rotuloLink.appendChild(seletorCatalogo((item) => {
+    campoLink.value = item.url;
+    campoTitulo.value = campoTitulo.value || item.titulo;
+    atualizarEstadoCriar();
+  }));
   const nota = nodo('p', 'form-nota', `Convida: ${convidados.map((id) => nomeDe(id)).join(', ')}`);
   const criar = botao('Criar sessão', 'btn btn-primary');
   const modal = abrirModal({
     titulo: 'Sessão de filme',
-    corpo: [rotuloTitulo, rotuloFicheiro, aviso, nota],
+    corpo: [rotuloTitulo, rotuloFicheiro, rotuloLink, aviso, nota],
     acoes: [botao('Cancelar'), criar],
   });
   criar.disabled = true;
-  let medido = null;
+  let medido = null; // ficheiro local medido
+  let urlMedida = null; // {nome, duracaoSec} do link medido
+  function modoEmUso() {
+    return campoLink.value.trim() !== '' ? 'link' : 'ficheiro';
+  }
+  async function atualizarEstadoCriar() {
+    if (modoEmUso() === 'link') {
+      medido = null;
+      const link = campoLink.value.trim();
+      urlMedida = await medirUrl(link);
+      if (!urlMedida) {
+        aviso.hidden = false;
+        aviso.textContent = 'Não foi possível ler o vídeo desse link (tem de ser MP4/WebM direto e público).';
+        ficha.textContent = '';
+        criar.disabled = true;
+        return;
+      }
+      aviso.hidden = true;
+      ficha.textContent = `Link OK — ${rotuloDuracao(urlMedida.duracaoSec)} (todos veem esta cópia)`;
+      criar.disabled = false;
+      return;
+    }
+    urlMedida = null;
+    if (!medido) {
+      criar.disabled = true;
+      ficha.textContent = '';
+      return;
+    }
+    aviso.hidden = true;
+    ficha.textContent = `${medido.nome} — ${rotuloDuracao(medido.duracaoSec)}`;
+    criar.disabled = false;
+  }
+  campoLink.addEventListener('input', () => { campo.value = ''; atualizarEstadoCriar(); });
   campo.addEventListener('change', async () => {
+    if (campo.files?.[0]) campoLink.value = '';
     const file = campo.files?.[0];
     medido = file ? await prepararFicheiro(file) : null;
     if (!medido) {
@@ -178,6 +250,24 @@ function abrirModalAnfitriao(conv, convidados) {
     criar.disabled = false;
   });
   criar.addEventListener('click', () => {
+    if (modoEmUso() === 'link') {
+      if (!urlMedida) return;
+      sessao = novaSessao({
+        papel: 'anfitriao', id: null, titulo: campoTitulo.value.trim() || urlMedida.nome,
+        fileName: urlMedida.nome, durationSec: urlMedida.duracaoSec, convId: conv.id,
+        ficheiro: null, movieUrl: campoLink.value.trim(), fileMatches: true,
+      });
+      modal.fechar();
+      const ok = ws?.send({
+        type: 'session_create', title: sessao.titulo, fileName: sessao.fileName,
+        durationSec: sessao.durationSec, toUserIds: convidados, movieUrl: sessao.movieUrl,
+      });
+      if (!ok) {
+        toast('Sem ligação ao servidor — a sessão não foi criada.', 'erro');
+        sessao = null;
+      }
+      return;
+    }
     if (!medido) return;
     sessao = novaSessao({
       papel: 'anfitriao', id: null, titulo: campoTitulo.value.trim() || medido.nome,
@@ -202,6 +292,7 @@ function aoCreated(envelope) {
   if (typeof envelope.title === 'string') sessao.titulo = envelope.title;
   if (typeof envelope.fileName === 'string') sessao.fileName = envelope.fileName;
   if (typeof envelope.durationSec === 'number') sessao.durationSec = envelope.durationSec;
+  if (typeof envelope.movieUrl === 'string') sessao.movieUrl = envelope.movieUrl;
   sessao.membros.set(euId, { username: euNome(), fileMatches: true });
   montarVista();
 }
@@ -211,6 +302,27 @@ function aoCreated(envelope) {
 function aoInvite(invite) {
   const { sessionId, fromName, title, fileName, durationSec } = invite;
   if (typeof sessionId !== 'string' || sessao) return; // já numa sessão — convite ignorado
+
+  // Sessão por LINK (v1.1): todos carregam a mesma cópia — sem ficheiro local.
+  if (typeof invite.movieUrl === 'string' && invite.movieUrl !== '') {
+    const modal = abrirModal({
+      titulo: 'Convite para sessão de filme',
+      corpo: [
+        nodo('p', '', `${fromName ?? 'Um amigo'} convidou-o para ver "${title ?? 'um filme'}".`),
+        nodo('p', 'hint', 'Transmissão por link: todos veem a MESMA cópia — não precisa de ficheiro local.'),
+      ],
+      acoes: [
+        botao('Recusar', 'btn', () => modal.fechar()),
+        botao('Entrar', 'btn btn-primary', () => {
+          modal.fechar();
+          juntar(invite, null, true, invite.movieUrl);
+        }),
+      ],
+      bloqFora: true,
+    });
+    return;
+  }
+
   const campo = campoFicheiro();
   const resultado = nodo('p', 'hint');
   const aviso = nodo('p', 'form-erro');
@@ -266,11 +378,11 @@ function aoInvite(invite) {
     else juntar(invite, null, false);
   });
 }
-function juntar(invite, ficheiro, fileMatches) {
+function juntar(invite, ficheiro, fileMatches, movieUrl = null) {
   sessao = novaSessao({
     papel: 'convidado', id: invite.sessionId, titulo: invite.title,
     fileName: invite.fileName, durationSec: invite.durationSec, convId: null,
-    ficheiro: ficheiro?.file ?? null, fileMatches,
+    ficheiro: ficheiro?.file ?? null, fileMatches, movieUrl,
   });
   const anfitriao = `${invite.fromName || 'Anfitrião'} (anfitrião)`;
   sessao.membros.set('__anfitriao__', { username: anfitriao, fileMatches: true }); // sempre tem o ficheiro
@@ -358,6 +470,13 @@ function montarVista() {
     video = nodo('video', 'filme-video');
     video.playsInline = true;
     video.src = sessao.objectUrl;
+    video.addEventListener('error', () => palco.replaceChildren(nodoAvisoFormato()));
+    palco.appendChild(video);
+  } else if (sessao.fileMatches && sessao.movieUrl) {
+    // Link direto (Archive/R2/Supabase…): todos carregam a MESMA cópia.
+    video = nodo('video', 'filme-video');
+    video.playsInline = true;
+    video.src = sessao.movieUrl;
     video.addEventListener('error', () => palco.replaceChildren(nodoAvisoFormato()));
     palco.appendChild(video);
   } else {
