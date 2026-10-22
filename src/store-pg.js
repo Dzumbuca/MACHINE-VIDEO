@@ -66,6 +66,9 @@ function linhaUser(row) {
     passHash: row.pass_hash,
     secQ: row.sec_q,
     secA: row.sec_a,
+    // Google (v1.1) — ausentes em contas clássicas; undefined no objeto.
+    email: row.email,
+    googleId: row.google_id,
     createdAt: row.created_at.toISOString(),
   };
 }
@@ -119,7 +122,7 @@ async function createStorePg(connectionString, { reset = false, ...opcoesPool } 
   }
 
   // Métodos Google (v1.1) — mixin em src/store-pg-google.js.
-  const metodosGoogle = criarMetodosGooglePg(pool);
+  const metodosGoogle = criarMetodosGooglePg(pool, { novoId, linhaUser, erroDuplicado });
 
   /** Garante que o utilizador existe ou lança E_NOTFOUND. */
   async function exigeUser(db, userId) {

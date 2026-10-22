@@ -20,9 +20,11 @@
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   username TEXT NOT NULL UNIQUE,
-  pass_hash TEXT NOT NULL,
-  sec_q TEXT NOT NULL,
-  sec_a TEXT NOT NULL,
+  pass_hash TEXT,        -- NULL para contas que só entram com o Google (v1.1)
+  sec_q TEXT,            -- NULL para contas Google (v1.1)
+  sec_a TEXT,            -- NULL para contas Google (v1.1)
+  email TEXT,            -- v1.1 (adicionado por ALTER abaixo)
+  google_id TEXT,        -- v1.1 (adicionado por ALTER abaixo)
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -83,6 +85,11 @@ CREATE INDEX IF NOT EXISTS idx_messages_conv_seq ON messages (conv_id, seq);
 -- v1.1 — login com Google (colunas aditivas, idempotentes)
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id TEXT;
+-- Contas Google não têm senha nem pergunta de segurança: as colunas passam a
+-- aceitar NULL (idempotente — DROP NOT NULL em coluna já anulável é no-op).
+ALTER TABLE users ALTER COLUMN pass_hash DROP NOT NULL;
+ALTER TABLE users ALTER COLUMN sec_q DROP NOT NULL;
+ALTER TABLE users ALTER COLUMN sec_a DROP NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id
   ON users (google_id) WHERE google_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email
