@@ -15,6 +15,7 @@
 
 import { toast } from './ui/views.js';
 import { seletorCatalogo } from './ui/catalogo.js';
+import { botaoLegendas, botaoTelaCheia } from './ui/legendas.js';
 import { mostrarChip, removerChip, abrirModal, botao, nodo, restaurarZonaPrincipal } from './call.js';
 
 const INTERVALO_DRIFT_MS = 2000;
@@ -536,7 +537,11 @@ function montarControles(controles, video, tempo) {
   const rotuloTempo = () => `${rotuloDuracao(video.currentTime)} / ${rotuloDuracao(sessao.durationSec)}`;
   if (sessao.papel !== 'anfitriao') {
     controles.append(nodo('span', 'filme-nota-host', 'A reprodução é controlada pelo anfitrião — não há controles aqui.'), tempo);
-    if (video) video.addEventListener('timeupdate', () => { tempo.textContent = rotuloTempo(); });
+    if (video) {
+      video.addEventListener('timeupdate', () => { tempo.textContent = rotuloTempo(); });
+      // Convidado também tem legendas próprias e tela cheia (v1.1).
+      controles.append(botaoLegendas(video), botaoTelaCheia(video));
+    }
     return null;
   }
   const barra = Object.assign(globalThis.document.createElement('input'), {
@@ -550,6 +555,7 @@ function montarControles(controles, video, tempo) {
     botao('▶ Tocar', 'btn btn-sm', () => controlar('play')),
     botao('⏸ Pausar', 'btn btn-sm', () => controlar('pause')),
     barra, tempo);
+  if (video) controles.append(botaoLegendas(video), botaoTelaCheia(video)); // v1.1
   if (video) {
     video.addEventListener('timeupdate', () => {
       tempo.textContent = rotuloTempo();

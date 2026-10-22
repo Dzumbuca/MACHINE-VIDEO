@@ -1,8 +1,10 @@
 /**
  * Player solo (v1.1) — ver um filme do catálogo SEM sessão, no próprio app.
  * Devolve o nodo pronto para montar na zona principal (sem WS, sem controles
- * partilhados: cada um controla o seu).
+ * partilhados: cada um controla o seu). Inclui legendas próprias e tela cheia.
  */
+
+import { botaoLegendas, botaoTelaCheia } from './legendas.js';
 
 export function montarPlayerSolo({ titulo, url, aoVoltar }) {
   const doc = globalThis.document;
@@ -36,8 +38,12 @@ export function montarPlayerSolo({ titulo, url, aoVoltar }) {
   });
   palco.appendChild(video);
 
+  // Legendas próprias + tela cheia (v1.1) — importados de ui/legendas.js.
+  const controles = nodo('div', 'filme-controles');
+  controles.append(botaoLegendas(video), botaoTelaCheia(video));
+
   const raiz = doc.createElement('div');
   raiz.className = 'filme catalogo';
-  raiz.append(cabeca, palco);
+  raiz.append(cabeca, palco, controles);
   return raiz;
 }
