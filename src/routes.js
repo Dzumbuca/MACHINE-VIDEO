@@ -16,7 +16,12 @@ const MIME_TYPES = {
 };
 
 function sendJson(res, status, body) {
-  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
+  // no-store: respostas de API (providers, /api/me…) nunca podem vir de
+  // cache do navegador — um client velho esconde o botão do Google etc.
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store',
+  });
   res.end(JSON.stringify(body));
 }
 
@@ -127,7 +132,12 @@ function createRouter({ store, publicDir }) {
         return;
       }
       const type = MIME_TYPES[path.extname(filePath).toLowerCase()] || 'application/octet-stream';
-      res.writeHead(200, { 'Content-Type': type });
+      // no-cache no HTML/JS/CSS: depois de cada deploy o cliente carrega a
+      // versão nova (o token vive em localStorage, não perde sessão).
+      res.writeHead(200, {
+        'Content-Type': type,
+        'Cache-Control': 'no-cache',
+      });
       res.end(data);
     });
   }
