@@ -15,8 +15,31 @@
     <link rel="stylesheet" href="/ui/chat.css" />
     <link rel="stylesheet" href="/ui/chamada.css" />
     <link rel="stylesheet" href="/ui/filme.css" />
+    <script>
+      // Diagnóstico v1.1: qualquer erro de JavaScript aparece VISÍVEL na página
+      // (script clássico, corre antes dos módulos — apanha falhas de arranque).
+      window.addEventListener('error', function (e) {
+        var barra = document.getElementById('erro-global');
+        if (barra && e.message) {
+          barra.hidden = false;
+          barra.textContent = '⚠ Erro: ' + e.message + ' (' + (e.filename || '') + ':' + (e.lineno || '?') + ')';
+        }
+      });
+      window.addEventListener('unhandledrejection', function (e) {
+        var barra = document.getElementById('erro-global');
+        if (barra && e.reason) {
+          barra.hidden = false;
+          barra.textContent = '⚠ Erro (promessa): ' + (e.reason.message || String(e.reason));
+        }
+      });
+    </script>
   </head>
   <body>
+    <div
+      id="erro-global"
+      hidden
+      style="position: fixed; top: 0; left: 0; right: 0; z-index: 9999; background: #b3261e; color: #fff; padding: 8px 12px; font: 13px monospace; word-break: break-all"
+    ></div>
     <!-- Ecrã de entrada: entrar / criar conta / recuperar senha (ligado por ui/auth.js) -->
     <div id="auth" class="auth-screen">
       <section class="auth-card" aria-labelledby="auth-titulo">
