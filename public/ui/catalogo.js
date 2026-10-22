@@ -30,6 +30,11 @@ export const CATALOGO = [
   { titulo: 'Three Stooges — Episódios', ano: 1940, categoria: 'Comédia', descricao: 'Os três troubalhões clássicos', url: 'https://archive.org/download/3stooges/3stooges_NewMalice1_512kb.mp4' },
   { titulo: 'My Favorite Brunette', ano: 1947, categoria: 'Comédia', descricao: 'Bob Hope em comédia de detectives', url: 'https://archive.org/download/my_favorite_brunette/my_favorite_brunette_512kb.mp4' },
   { titulo: 'McLintock!', ano: 1963, categoria: 'Comédia', descricao: 'John Wayne no western cómico', url: 'https://archive.org/download/mclintok_widescreen/McLintock_512kb.mp4' },
+  // --- 📺 Séries (episódios em domínio público) ---
+  { titulo: 'Beverly Hillbillies — Ep. 1 "Strike Oil"', ano: 1962, categoria: 'Séries', descricao: 'A família do petróleo muda-se para Beverly Hills (série clássica)', url: 'https://archive.org/download/Beverly_Hillbillies_Ep01_The_Clampetts_Strike_Oil/BH01_The_Clampetts_Strike_Oil_512kb.mp4' },
+  { titulo: 'Beverly Hillbillies — "Granny\'s Garden"', ano: 1962, categoria: 'Séries', descricao: 'A avó e a sua horta em Beverly Hills', url: 'https://archive.org/download/The_Beverly_Hillbillies/GRANNYS_GARDEN_512kb.mp4' },
+  { titulo: 'Bonanza — S02E07', ano: 1960, categoria: 'Séries', descricao: 'Os Cartwright do rancho Ponderosa (western clássico)', url: 'https://archive.org/download/Bonanza_pd/BonanzaS02e07.mp4' },
+  { titulo: 'Flash Gordon — Cap. 1', ano: 1940, categoria: 'Séries', descricao: 'Serial espacial "Conquers the Universe" — capítulo de abertura', url: 'https://archive.org/download/flash_gordon1/flash_gordon_ep01_512kb.mp4' },
   // --- 🕵️ Suspense e ação ---
   { titulo: 'Dressed to Kill', ano: 1945, categoria: 'Suspense', descricao: 'Sherlock Holmes e as notas musicais roubadas', url: 'https://archive.org/download/dressed_to_kill/dressed_to_kill_512kb.mp4' },
   { titulo: 'The Fast and the Furious', ano: 1954, categoria: 'Suspense', descricao: 'Fuga de carro em corrida no México (original!)', url: 'https://archive.org/download/TheFastandtheFuriousJohnIreland1954goofyrip/TheFastandtheFuriousJohnIreland1954goofyrip_512kb.mp4' },
@@ -37,7 +42,7 @@ export const CATALOGO = [
   { titulo: 'The Pied Piper of Hamelin', ano: 1942, categoria: 'Clássicos', descricao: 'Musical do flautista mágico com Van Johnson', url: 'https://archive.org/download/The_Pied_Piper_of_Hamelin/pied_512kb.mp4' },
 ];
 
-const ORDEM_CATEGORIAS = ['Animação', 'Clássicos', 'Comédia', 'Suspense'];
+const ORDEM_CATEGORIAS = ['Animação', 'Séries', 'Clássicos', 'Comédia', 'Suspense'];
 
 /** Cria um <select> com o catálogo (agrupado); ao escolher chama aoEscolher. */
 export function seletorCatalogo(aoEscolher) {
@@ -68,9 +73,9 @@ export function seletorCatalogo(aoEscolher) {
 }
 
 /**
- * Home do catálogo: grelha de cartões no painel principal. Cada cartão tem
- * "▶ Ver sozinho" e "👥 Chamar amigos" (cria sessão sincronizada na conversa
- * ativa). Montada via MV.montarVistaPrincipal (ecrã cheio no telemóvel).
+ * Home do catálogo: FILTROS por categoria + grelha de cartões. Cada cartão
+ * tem "▶ Ver sozinho" e "👥 Chamar amigos" (cria sessão sincronizada na
+ * conversa ativa). Montada via MV.montarVistaPrincipal (ecrã cheio telemóvel).
  */
 export function abrirCatalogo() {
   const MV = globalThis.window?.MV;
@@ -99,30 +104,58 @@ export function abrirCatalogo() {
   );
   cabeca.append(zonaTitulo, voltar);
 
-  const grelha = nodo('div', 'catalogo-grelha');
-  for (const categoria of ORDEM_CATEGORIAS) {
-    const itens = CATALOGO.filter((i) => i.categoria === categoria);
-    if (itens.length === 0) continue;
-    grelha.appendChild(nodo('h3', 'catalogo-categoria', `${categoria} (${itens.length})`));
-    for (const item of itens) {
-      const cartao = nodo('article', 'catalogo-cartao');
-      const info = nodo('div', 'catalogo-info');
-      info.append(
-        nodo('strong', null, `${item.titulo} (${item.ano})`),
-        nodo('p', 'catalogo-desc', item.descricao),
-      );
-      const acoes = nodo('div', 'catalogo-acoes');
-      acoes.append(
-        botao('▶ Ver sozinho', 'btn btn-sm', () => MV.verSozinho?.(item)),
-        botao('👥 Chamar amigos', 'btn btn-primary btn-sm', () => MV.criarSessaoDoCatalogo?.(item)),
-      );
-      cartao.append(info, acoes);
-      grelha.appendChild(cartao);
+  // Filtros por categoria: chips "Todos" + uma por categoria (v1.1).
+  let categoriaAtiva = null; // null = Todos
+  const filtros = nodo('div', 'catalogo-filtros');
+
+  function renderFiltros() {
+    filtros.replaceChildren();
+    const chips = [{ nome: null, rotulo: 'Todos' }].concat(
+      ORDEM_CATEGORIAS.map((c) => ({
+        nome: c,
+        rotulo: `${c} (${CATALOGO.filter((i) => i.categoria === c).length})`,
+      })),
+    );
+    for (const { nome, rotulo } of chips) {
+      filtros.appendChild(botao(
+        rotulo,
+        'catalogo-filtro' + (categoriaAtiva === nome ? ' is-active' : ''),
+        () => { categoriaAtiva = nome; renderFiltros(); renderGrelha(); },
+      ));
     }
   }
 
+  const grelha = nodo('div', 'catalogo-grelha');
+  function renderGrelha() {
+    grelha.replaceChildren();
+    for (const categoria of ORDEM_CATEGORIAS) {
+      if (categoriaAtiva && categoriaAtiva !== categoria) continue;
+      const itens = CATALOGO.filter((i) => i.categoria === categoria);
+      if (itens.length === 0) continue;
+      grelha.appendChild(nodo('h3', 'catalogo-categoria', `${categoria} (${itens.length})`));
+      for (const item of itens) {
+        const cartao = nodo('article', 'catalogo-cartao');
+        const info = nodo('div', 'catalogo-info');
+        info.append(
+          nodo('strong', null, `${item.titulo} (${item.ano})`),
+          nodo('p', 'catalogo-desc', item.descricao),
+        );
+        const acoes = nodo('div', 'catalogo-acoes');
+        acoes.append(
+          botao('▶ Ver sozinho', 'btn btn-sm', () => MV.verSozinho?.(item)),
+          botao('👥 Chamar amigos', 'btn btn-primary btn-sm', () => MV.criarSessaoDoCatalogo?.(item)),
+        );
+        cartao.append(info, acoes);
+        grelha.appendChild(cartao);
+      }
+    }
+  }
+
+  renderFiltros();
+  renderGrelha();
+
   const raiz = doc.createElement('div');
   raiz.className = 'catalogo';
-  raiz.append(cabeca, grelha);
+  raiz.append(cabeca, filtros, grelha);
   MV.montarVistaPrincipal(raiz);
 }
