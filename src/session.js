@@ -329,12 +329,30 @@ function createSessionHandlers({ store, enviarDireto, enviarPara }) {
     // Em nenhuma sessão: no-op silencioso (nada a sair).
   }
 
+  // v1.1 — TRANSMISSÃO do ficheiro do anfitrião (WebRTC): relay puro e sem
+  // estado, como a sinalização de chamadas (Task 7). Só o ANFITRIÃO oferece;
+  // só MEMBROS da sessão recebem. Os `dados` são sdp/ice opacos do RTC.
+  function tratarStream(envelope, user, ws) {
+    const { sessionId, toUserId, dados } = envelope;
+    if (!idValido(sessionId) || typeof toUserId !== 'string' || !dados || typeof dados !== 'object') {
+      erro(ws, 'E_INVALID');
+      return;
+    }
+    const sessao = sessoesAtivas.get(sessionId);
+    if (!sessao || sessao.hostUserId !== user.id || !sessao.members.has(toUserId)) {
+      erro(ws, 'E_FORBIDDEN');
+      return;
+    }
+    enviarPara(toUserId, { type: 'session_stream', sessionId, fromUserId: user.id, dados });
+  }
+
   /** Rede de segurança: um handler nunca derruba o hub (espelho do ws.js). */
   async function comRedeSeguranca(fn, ws) {
     try {
       await fn();
       return true;
-    } catch {
+    } catch (erroDiagnostico) {
+      if (process.env.MV_DEBUG) console.error('Sessões[debug]:', erroDiagnostico);
       erro(ws, 'E_INTERNAL');
       return true;
     }
@@ -356,6 +374,9 @@ function createSessionHandlers({ store, enviarDireto, enviarPara }) {
         return comRedeSeguranca(() => tratarControle(envelope, user, ws), ws);
       case 'session_leave':
         return comRedeSeguranca(() => tratarSaida(envelope, user, ws), ws);
+      case 'session_stream':
+        // v1.1: relay WebRTC do ficheiro do anfitrião (só anfitrião oferece).
+        return comRedeSeguranca(() => tratarStream(envelope, user, ws), ws);
       default:
         return false;
     }

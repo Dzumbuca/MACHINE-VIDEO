@@ -90,6 +90,7 @@ export function iniciarSessoesFilme() {
   for (const [tipo, fn] of [
     ['session_created', aoCreated], ['session_invite', aoInvite], ['session_member', aoMember],
     ['session_control', aoControl], ['session_ended', aoEnded], ['error', aoErro],
+    ['session_stream', aoStream], // v1.1: transmissão WebRTC do ficheiro
   ]) soltarHandlers.push(ws.on(tipo, fn));
   MV.criarSessaoFilme = iniciarDaConversa;
   MV.criarSessaoDoCatalogo = iniciarDoCatalogo; // v1.1: Home do catálogo
@@ -127,6 +128,7 @@ function novaSessao(parcial) {
     ficheiro: parcial.ficheiro ?? null, objectUrl: null,
     movieUrl: parcial.movieUrl ?? null,
     fileMatches: Boolean(parcial.fileMatches), membros: new Map(),
+    streams: new Map(), // v1.1: RTC por convidado (transmissão do ficheiro)
     ultimoControle: null, refs: null, chip: null, timer: null, avisouAutoplay: false,
   };
 }
@@ -429,6 +431,11 @@ function aoMember(envelope) {
   });
   if (envelope.userId === euId) sessao.fileMatches = Boolean(envelope.fileMatches);
   atualizarMembros();
+  // v1.1 — TRANSMISSÃO: convidado sem ficheiro numa sessão de ficheiro
+  // local? O anfitrião oferece o stream dele (WebRTC) a esse convidado.
+  if (sessao.papel === 'anfitriao' && !envelope.fileMatches && sessao.ficheiro && sessao.refs?.video) {
+    oferecerTransmissao(envelope.userId);
+  }
 }
 function aoControl(envelope) {
   if (!sessao || envelope.sessionId !== sessao.id) return;
@@ -442,6 +449,9 @@ function aoControl(envelope) {
 function aplicarNoVideo(action, positionSec) {
   const v = sessao?.refs?.video;
   if (!v) return;
+  // Transmissão (v1.1): o convidado vê o FEED ao vivo do anfitrião — os
+  // controles do anfitrião já se refletem no stream; seek local é sem sentido.
+  if (v.srcObject) return;
   if (action === 'seek') { v.currentTime = positionSec; return; }
   if (action === 'pause') {
     v.pause();
@@ -455,6 +465,116 @@ function aplicarNoVideo(action, positionSec) {
     toast('Toque no vídeo para autorizar a reprodução com som.', 'info');
   });
 }
+// ---- v1.1: TRANSMISSÃO do ficheiro do anfitrião (WebRTC) ---------------------
+
+const SERVIDORES_ICE = [{ urls: 'stun:stun.l.google.com:19302' }];
+
+/** Anfitrião: oferece o stream do <video> local a um convidado sem ficheiro. */
+async function oferecerTransmissao(guestId) {
+  const video = sessao?.refs?.video;
+  if (!video || !video.captureStream) {
+    toast('Este navegador não suporta transmissão do ficheiro (experimenta o Chrome).', 'erro');
+    return;
+  }
+  if (sessao.streams.has(guestId)) return; // já em negociação com este convidado
+  try {
+    const stream = video.captureStream();
+    const pc = new RTCPeerConnection({ iceServers: SERVIDORES_ICE });
+    for (const track of stream.getTracks()) pc.addTrack(track, stream);
+    pc.onicecandidate = (e) => {
+      if (e.candidate) ws?.send({
+        type: 'session_stream', sessionId: sessao.id,
+        toUserId: guestId, dados: { ice: e.candidate.toJSON() },
+      });
+    };
+    const oferta = await pc.createOffer();
+    await pc.setLocalDescription(oferta);
+    ws?.send({
+      type: 'session_stream', sessionId: sessao.id,
+      toUserId: guestId, dados: { sdp: pc.localDescription },
+    });
+    sessao.streams.set(guestId, { pc, respostas: false, gelo: [] });
+  } catch (erro) {
+    toast('A transmissão falhou a arrancar: ' + erro.message, 'erro');
+  }
+}
+
+/** Convidado: recebe oferta/ICE do anfitrião e liga o stream ao seu vídeo. */
+async function receberTransmissao(deId, dados) {
+  if (!sessao?.refs?.video) return;
+  const video = sessao.refs.video;
+  let pc = sessao.streams.get('host')?.pc;
+  if (dados.sdp) {
+    pc = pc || novaLigacaoConvidado(deId);
+    try {
+      await pc.setRemoteDescription(new RTCSessionDescription(dados.sdp));
+      const resposta = await pc.createAnswer();
+      await pc.setLocalDescription(resposta);
+      ws?.send({
+        type: 'session_stream', sessionId: sessao.id,
+        toUserId: deId, dados: { answer: pc.localDescription },
+      });
+      for (const gelo of sessao.streams.get('host').gelo.splice(0)) {
+        await pc.addIceCandidate(new RTCIceCandidate(gelo)).catch(() => {});
+      }
+    } catch (erro) {
+      toast('Não consegui receber a transmissão: ' + erro.message, 'erro');
+    }
+    return;
+  }
+  if (dados.ice && pc) await pc.addIceCandidate(new RTCIceCandidate(dados.ice)).catch(() => {});
+}
+
+/** Convidado: cria a ligação de RECEÇÃO e mostra o stream quando chegar. */
+function novaLigacaoConvidado(deId) {
+  const pc = new RTCPeerConnection({ iceServers: SERVIDORES_ICE });
+  pc.ontrack = (e) => {
+    const video = sessao?.refs?.video;
+    if (!video) return;
+    video.srcObject = e.streams[0];
+    video.play?.()?.catch?.(() => {
+      if (sessao?.avisouAutoplay) return;
+      sessao.avisouAutoplay = true;
+      toast('Toque no vídeo para autorizar a reprodução com som.', 'info');
+    });
+  };
+  pc.onicecandidate = (e) => {
+    if (e.candidate) ws?.send({
+      type: 'session_stream', sessionId: sessao.id,
+      toUserId: deId, dados: { ice: e.candidate.toJSON() },
+    });
+  };
+  sessao.streams.set('host', { pc, gelo: [] });
+  return pc;
+}
+
+/** Envelopes session_stream (ambos os papéis). */
+function aoStream(envelope) {
+  if (!sessao || envelope.sessionId !== sessao.id || !envelope.dados) return;
+  if (sessao.papel === 'anfitriao') {
+    const ligacao = sessao.streams.get(envelope.fromUserId);
+    if (!ligacao) return;
+    const { dados } = envelope;
+    if (dados.answer && !ligacao.respostas) {
+      ligacao.respostas = true;
+      ligacao.pc.setRemoteDescription(new RTCSessionDescription(dados.answer)).catch(() => {});
+      for (const gelo of ligacao.gelo.splice(0)) {
+        ligacao.pc.addIceCandidate(new RTCIceCandidate(gelo)).catch(() => {});
+      }
+    } else if (dados.ice && ligacao.respostas) {
+      ligacao.pc.addIceCandidate(new RTCIceCandidate(dados.ice)).catch(() => {});
+    } else if (dados.ice) {
+      ligacao.gelo.push(dados.ice); // ICE antes da resposta — fila
+    }
+    return;
+  }
+  // Convidado: só aceita stream do ANFITRIÃO.
+  if (envelope.fromUserId === sessao.id) return; // (defensivo)
+  const anfitriao = [...sessao.membros.keys()].find((id) => id === '__anfitriao__');
+  void anfitriao;
+  receberTransmissao(envelope.fromUserId, envelope.dados);
+}
+
 function aoEnded(envelope) {
   if (!sessao || envelope.sessionId !== sessao.id) return;
   terminarSessao('O anfitrião encerrou a sessão de filme.', false);
@@ -505,6 +625,17 @@ function montarVista() {
     video.src = sessao.movieUrl;
     video.addEventListener('error', () => palco.replaceChildren(nodoAvisoFormato()));
     palco.appendChild(video);
+  } else if (sessao.fileMatches && sessao.papel === 'convidado') {
+    // v1.1 — TRANSMISSÃO: convidado sem ficheiro numa sessão de ficheiro
+    // local → espera o stream WebRTC do anfitrião (chega para este <video>).
+    video = nodo('video', 'filme-video');
+    video.playsInline = true;
+    video.muted = true; // autoplay do stream é permitido mudo; som via botão do navegador
+    palco.append(
+      video,
+      nodo('p', 'filme-nota-host', 'A receber a transmissão do anfitrião… (os controles são dele)'),
+    );
+    video.addEventListener('error', () => palco.replaceChildren(nodoAvisoFormato()));
   } else {
     palco.appendChild(nodoSoConversa());
   }
@@ -640,6 +771,9 @@ function terminarSessao(motivo = null, avisar = true) {
   if (!atual) return;
   sessao = null;
   pararDrift();
+  for (const ligacao of atual.streams?.values() ?? []) {
+    try { ligacao.pc?.close(); } catch { /* já fechada */ }
+  }
   if (avisar && atual.id) ws?.send({ type: 'session_leave', sessionId: atual.id });
   if (atual.timer) clearInterval(atual.timer);
   if (atual.objectUrl) URL.revokeObjectURL(atual.objectUrl);

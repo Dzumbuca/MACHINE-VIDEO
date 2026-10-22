@@ -539,3 +539,41 @@ test('session_create com movieUrl inválido (não-http) → E_INVALID', async ()
   });
   await erroDe(anaCli, 'E_INVALID');
 });
+
+// --- v1.1: transmissão WebRTC do ficheiro do anfitrião ---------------------------
+
+test('session_stream: o ANFITRIÃO transmite a um membro; não-membro é bloqueado', async () => {
+  const brunoCli = await clienteAutenticado(bruno);
+  const anaCli = await clienteAutenticado(ana);
+  const convite = await criarSessao(anaCli, brunoCli);
+  await juntarBruno(brunoCli, convite.sessionId, false); // convidado sem ficheiro
+
+  // Relay: anfitrião → convidado (sdp opaco chega intacto).
+  const promessaStream = esperarNovaMensagem(brunoCli, (m) => m.type === 'session_stream');
+  anaCli.enviar({
+    type: 'session_stream', sessionId: convite.sessionId, toUserId: bruno.id,
+    dados: { sdp: { type: 'offer', sdp: 'v=0 oferta-teste' } },
+  });
+  const stream = await promessaStream;
+  assert.equal(stream.fromUserId, ana.id);
+  assert.deepEqual(stream.dados.sdp, { type: 'offer', sdp: 'v=0 oferta-teste' });
+
+  // O CONVIDADO não pode oferecer (só o anfitrião transmite).
+  brunoCli.enviar({
+    type: 'session_stream', sessionId: convite.sessionId, toUserId: ana.id,
+    dados: { sdp: { type: 'offer', sdp: 'v=0 intruso' } },
+  });
+  await erroDe(brunoCli, 'E_FORBIDDEN');
+});
+
+test('session_stream: para quem não é membro → E_FORBIDDEN', async () => {
+  const carlaCli = await clienteAutenticado(carla);
+  const anaCli = await clienteAutenticado(ana);
+  const brunoCli = await clienteAutenticado(bruno);
+  const convite = await criarSessao(anaCli, brunoCli);
+  carlaCli.enviar({
+    type: 'session_stream', sessionId: convite.sessionId, toUserId: ana.id,
+    dados: { sdp: {} },
+  });
+  await erroDe(carlaCli, 'E_FORBIDDEN');
+});
