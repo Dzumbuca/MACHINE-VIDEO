@@ -152,6 +152,19 @@ function createSessionHandlers({ store, enviarDireto, enviarPara }) {
 
   async function tratarCriacao(envelope, user, ws) {
     const { title, fileName, durationSec, toUserIds, movieUrl } = envelope;
+    // v1.2 — UMA transmissão partilhada de cada vez: se já existe uma sessão
+    // ativa, o utilizador é convidado a ENTRAR nela (com o estado completo),
+    // não a duplicar. Re-verificado após validarConvidados (fecha a corrida
+    // entre o await e o set: dois creates simultâneos não passam ambos).
+    // Regra ativa em produção ou com MV_SESSAO_UNICA=1 (os testes de
+    // protocolo legados correm multi-sessão).
+    if (sessaoUnicaAtiva()) {
+      const ativa = primeiraSessaoAtiva();
+      if (ativa) {
+        await avisarSessaoAtiva(ws, ativa.id, ativa.sessao);
+        return;
+      }
+    }
     if (
       typeof title !== 'string' ||
       typeof fileName !== 'string' ||
@@ -182,6 +195,14 @@ function createSessionHandlers({ store, enviarDireto, enviarPara }) {
     }
     const convidados = await validarConvidados(ws, user, toUserIds);
     if (!convidados) return;
+    // Corrida fechada (v1.2): outro create pode ter vencido durante o await.
+    if (sessaoUnicaAtiva()) {
+      const corrida = primeiraSessaoAtiva();
+      if (corrida) {
+        await avisarSessaoAtiva(ws, corrida.id, corrida.sessao);
+        return;
+      }
+    }
 
     const sessionId = crypto.randomUUID();
     // Membros = anfitriã (tem o ficheiro) + convidados (sem-ficheiro até
@@ -358,6 +379,73 @@ function createSessionHandlers({ store, enviarDireto, enviarPara }) {
     }
   }
 
+  // --- v1.2: UMA sessão ativa por rede -----------------------------------------
+
+  /** Regra ativa em produção ou com MV_SESSAO_UNICA=1 (leitura dinâmica: os
+   *  testes podem ligar/desligar por processo). */
+  function sessaoUnicaAtiva() {
+    return process.env.NODE_ENV === 'production' || process.env.MV_SESSAO_UNICA === '1';
+  }
+
+  /** A sessão ativa mais antiga ({id, sessao}) ou null. */
+  function primeiraSessaoAtiva() {
+    for (const [id, sessao] of sessoesAtivas) return { id, sessao };
+    return null;
+  }
+
+  /** Diz ao cliente que JÁ existe uma sessão ativa (com título e anfitrião). */
+  async function avisarSessaoAtiva(ws, sessionId, sessao) {
+    const host = await store.getUserById(sessao.hostUserId);
+    enviarDireto(ws, {
+      type: 'session_active',
+      sessionId,
+      title: sessao.title,
+      hostName: host?.username ?? 'anfitrião',
+      origem: sessao.movieUrl ? 'link' : 'ficheiro',
+      ...(sessao.movieUrl ? { movieUrl: sessao.movieUrl } : {}),
+    });
+  }
+
+  // Consulta de estado: o cliente pergunta antes de abrir o modal de criação.
+  async function tratarEstado(envelope, user, ws) {
+    const ativa = primeiraSessaoAtiva();
+    if (!ativa) {
+      enviarDireto(ws, { type: 'session_state', ativa: null });
+      return;
+    }
+    const host = await store.getUserById(ativa.sessao.hostUserId);
+    enviarDireto(ws, {
+      type: 'session_state',
+      ativa: {
+        sessionId: ativa.id,
+        title: ativa.sessao.title,
+        hostName: host?.username ?? 'anfitrião',
+        origem: ativa.sessao.movieUrl ? 'link' : 'ficheiro',
+        ...(ativa.sessao.movieUrl ? { movieUrl: ativa.sessao.movieUrl } : {}),
+      },
+    });
+  }
+
+  // Convite TARDIO (v1.2): o anfitrião convida um amigo para a sessão que já
+  // está a decorrer (a partir do painel de amigos, sem nova conversa).
+  async function tratarConviteTardio(envelope, user, ws) {
+    const { sessionId, toUserId } = envelope;
+    if (!idValido(sessionId) || typeof toUserId !== 'string') {
+      erro(ws, 'E_INVALID');
+      return;
+    }
+    const sessao = sessoesAtivas.get(sessionId);
+    if (!sessao || sessao.hostUserId !== user.id || !(await store.areFriends(user.id, toUserId))) {
+      erro(ws, 'E_FORBIDDEN');
+      return;
+    }
+    enviarPara(toUserId, {
+      type: 'session_invite', sessionId, fromName: user.username,
+      title: sessao.title, fileName: sessao.fileName, durationSec: sessao.durationSec,
+      ...(sessao.movieUrl ? { movieUrl: sessao.movieUrl } : {}),
+    });
+  }
+
   /**
    * Trata um envelope pós-auth de sessões. Devolve true se o tipo pertence à
    * sessão (tratado, com sucesso ou com erro); false deixa o hub responder
@@ -377,6 +465,12 @@ function createSessionHandlers({ store, enviarDireto, enviarPara }) {
       case 'session_stream':
         // v1.1: relay WebRTC do ficheiro do anfitrião (só anfitrião oferece).
         return comRedeSeguranca(() => tratarStream(envelope, user, ws), ws);
+      case 'session_state':
+        // v1.2: consulta "existe sessão ativa?" (para a Home e o painel).
+        return comRedeSeguranca(() => tratarEstado(envelope, user, ws), ws);
+      case 'session_invite_late':
+        // v1.2: anfitrião convida um amigo para a sessão em curso.
+        return comRedeSeguranca(() => tratarConviteTardio(envelope, user, ws), ws);
       default:
         return false;
     }

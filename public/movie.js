@@ -91,6 +91,7 @@ export function iniciarSessoesFilme() {
     ['session_created', aoCreated], ['session_invite', aoInvite], ['session_member', aoMember],
     ['session_control', aoControl], ['session_ended', aoEnded], ['error', aoErro],
     ['session_stream', aoStream], // v1.1: transmissão WebRTC do ficheiro
+    ['session_active', aoSessionActive], ['session_state', aoSessionState], // v1.2
   ]) soltarHandlers.push(ws.on(tipo, fn));
   MV.criarSessaoFilme = iniciarDaConversa;
   MV.criarSessaoDoCatalogo = iniciarDoCatalogo; // v1.1: Home do catálogo
@@ -103,13 +104,16 @@ export function iniciarSessoesFilme() {
  */
 export function iniciarDoCatalogo(item) {
   if (sessao) return toast('Já está numa sessão de filme — saia dela primeiro.', 'erro');
-  const MV = globalThis.window?.MV;
-  const estado = MV?.obterEstado?.();
-  const conv = (estado?.conversas ?? []).find((c) => c.id === estado?.ativa);
-  if (!conv) return toast('Abre uma conversa primeiro (Conversas → escolhe o amigo) e volta ao catálogo.', 'info');
-  const convidados = (conv.memberIds ?? []).filter((id) => id !== euId);
-  if (convidados.length === 0) return toast('Não há ninguém para convidar nesta conversa.', 'erro');
-  abrirModalAnfitriao(conv, convidados, { url: item.url, titulo: item.titulo });
+  // v1.2: consulta o estado — se já houver sessão ativa, ENTRA nela.
+  consultarEstado((ativa) => {
+    if (ativa) return modalEntrarSessaoAtiva(ativa);
+    const estado = MV?.obterEstado?.();
+    const conv = (estado?.conversas ?? []).find((c) => c.id === estado?.ativa);
+    if (!conv) return toast('Abre uma conversa primeiro (Conversas → escolhe o amigo) e volta ao catálogo.', 'info');
+    const convidados = (conv.memberIds ?? []).filter((id) => id !== euId);
+    if (convidados.length === 0) return toast('Não há ninguém para convidar nesta conversa.', 'erro');
+    abrirModalAnfitriao(conv, convidados, { url: item.url, titulo: item.titulo });
+  });
 }
 
 // ---- utilitários -------------------------------------------------------------------
@@ -187,9 +191,13 @@ const campoFicheiro = () => Object.assign(nodo('input', 'input'), { type: 'file'
 
 function iniciarDaConversa(conv) {
   if (sessao) return toast('Já está numa sessão de filme — saia dela primeiro.', 'erro');
-  const convidados = (conv?.memberIds ?? []).filter((id) => id !== euId);
-  if (convidados.length === 0) return toast('Não há ninguém para convidar nesta conversa.', 'erro');
-  abrirModalAnfitriao(conv, convidados);
+  // v1.2: consulta o estado — se já houver sessão ativa, ENTRA nela.
+  consultarEstado((ativa) => {
+    if (ativa) return modalEntrarSessaoAtiva(ativa);
+    const convidados = (conv?.memberIds ?? []).filter((id) => id !== euId);
+    if (convidados.length === 0) return toast('Não há ninguém para convidar nesta conversa.', 'erro');
+    abrirModalAnfitriao(conv, convidados);
+  });
 }
 
 function abrirModalAnfitriao(conv, convidados, prefilhe = null) {
@@ -465,6 +473,62 @@ function aplicarNoVideo(action, positionSec) {
     toast('Toque no vídeo para autorizar a reprodução com som.', 'info');
   });
 }
+// ---- v1.2: SESSÃO ÚNICA — consultar estado e ENTRAR na sessão ativa ---------
+
+let aguardandoEstado = null; // callback one-shot do consultarEstado
+
+/** Pergunta ao servidor "existe sessão ativa?" e chama sequa(ativaOuNull). */
+function consultarEstado(sequa) {
+  aguardandoEstado = sequa;
+  ws?.send({ type: 'session_state' });
+  // Rede de segurança: sem resposta em 3 s, segue como se não houvesse sessão.
+  setTimeout(() => {
+    if (aguardandoEstado === sequa) { aguardandoEstado = null; sequa(null); }
+  }, 3000);
+}
+
+function aoSessionState(envelope) {
+  const sequa = aguardandoEstado;
+  aguardandoEstado = null;
+  sequa?.(envelope.ativa ?? null);
+}
+
+/** Modal "já existe sessão ativa" → ENTRAR na que está a decorrer. */
+function modalEntrarSessaoAtiva(ativa) {
+  const doc = globalThis.document;
+  const nota = doc.createElement('p');
+  nota.className = 'form-nota';
+  nota.textContent = ativa.origem === 'link'
+    ? 'Vais ver a MESMA cópia (link) em sincronia — não precisas de ficheiro.'
+    : 'O anfitrião vai TRANSMITIR o ficheiro dele para ti — não precisas de ficheiro.';
+  const entrar = botao('Entrar na sessão', 'btn btn-primary', () => {
+    modal.fechar();
+    juntar(
+      { sessionId: ativa.sessionId, title: ativa.title, fileName: ativa.title, durationSec: 0, movieUrl: ativa.movieUrl ?? null },
+      null,
+      true,
+      ativa.movieUrl ?? null,
+    );
+  });
+  const modal = abrirModal({
+    titulo: 'Já existe uma sessão ativa',
+    corpo: [
+      doc.createRange().createContextualFragment(
+        `<p><strong>${ativa.title}</strong> — anfitrião: ${ativa.hostName}</p>`,
+      ).firstChild,
+      nota,
+    ],
+    acoes: [botao('Cancelar', 'btn', () => modal.fechar()), entrar],
+    bloqFora: true,
+  });
+}
+
+// Envelope do servidor (create bloqueado pela regra de sessão única).
+function aoSessionActive(envelope) {
+  if (sessao) return; // já estou numa sessão
+  modalEntrarSessaoAtiva(envelope);
+}
+
 // ---- v1.1: TRANSMISSÃO do ficheiro do anfitrião (WebRTC) ---------------------
 
 const SERVIDORES_ICE = [{ urls: 'stun:stun.l.google.com:19302' }];
