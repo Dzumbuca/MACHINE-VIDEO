@@ -665,7 +665,12 @@ function montarVista() {
  * Devolve a barra de posição (ou null para o convidado).
  */
 function montarControles(controles, video, tempo) {
-  const rotuloTempo = () => `${rotuloDuracao(video.currentTime)} / ${rotuloDuracao(sessao.durationSec)}`;
+  // Guard: o <video> destacado ainda pode disparar timeupdate depois de
+  // terminarSessao (sessao = null) — o rótulo simplesmente deixa de atualizar.
+  const rotuloTempo = () => {
+    if (!sessao) return '';
+    return `${rotuloDuracao(video.currentTime)} / ${rotuloDuracao(sessao.durationSec)}`;
+  };
   if (sessao.papel !== 'anfitriao') {
     controles.append(nodo('span', 'filme-nota-host', 'A reprodução é controlada pelo anfitrião — não há controles aqui.'), tempo);
     if (video) {
@@ -771,6 +776,9 @@ function terminarSessao(motivo = null, avisar = true) {
   if (!atual) return;
   sessao = null;
   pararDrift();
+  // Pausa o vídeo ANTES de descartar a vista: sem isto, o elemento destacado
+  // continuava a tocar (e a disparar timeupdate) depois do fim da sessão.
+  try { atual.refs?.video?.pause(); } catch { /* já parado */ }
   for (const ligacao of atual.streams?.values() ?? []) {
     try { ligacao.pc?.close(); } catch { /* já fechada */ }
   }
