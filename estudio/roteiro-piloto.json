@@ -1,0 +1,20 @@
+{
+  "titulo": "O Passageiro Fantasma - EP1",
+  "cenas": [
+    {
+      "prompt": "motorista de candongueiro azul ao anoitecer nas ruas de Luanda, luzes alaranjadas, estilo cinematografico, drama",
+      "voz": "pt-PT-DuarteNeural",
+      "fala": "Nessa noite, o passageiro do banco de trás não respirava. Eu sei, porque eu conto a respiração de todos."
+    },
+    {
+      "prompt": "homem de terno branco no banco de trás de um candongueiro, rosto refletido no espelho retrovisor, misterioso, Luanda de noite",
+      "voz": "pt-PT-DuarteNeural",
+      "fala": "Ele pagou com uma nota que parecia velha de trinta anos. E pediu para eu não passar pela igreja de Santa Ana."
+    },
+    {
+      "prompt": "espelho retrovisor de carro mostrando um assento vazio iluminado por poste, noite, neblina leve, tenso",
+      "voz": "pt-PT-DuarteNeural",
+      "fala": "Quando parei no semáforo da Independência, olhei o espelho. O banco de trás estava vazio. Mas a nota ainda estava na minha mão. E estava fria."
+    }
+  ]
+}
