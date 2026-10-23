@@ -83,6 +83,13 @@ function duracaoSegundos(ficheiro) {
   return Math.max(1.5, parseFloat(saida) + 0.8); // +0.8s de respiro
 }
 
+/** Voz LOCAL do Windows (SAPI) — reserva sem internet e sem limites. */
+function gerarVozWindows(fala, destinoWav) {
+  console.log('  usando a voz local do Windows (sem limites)…');
+  const script = `Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; $s.SetOutputToWaveFile('${destinoWav.replace(/\\/g, '\\\\').replace(/'/g, "''")}'); $s.Speak(${JSON.stringify(fala)}); $s.Dispose()`;
+  executar('powershell', ['-NoProfile', '-Command', script]);
+}
+
 async function main() {
   const roteiroCaminho = process.argv[2];
   if (!roteiroCaminho || !fs.existsSync(roteiroCaminho)) {
@@ -110,7 +117,16 @@ async function main() {
     console.log(`Cena ${i + 1}/${roteiro.cenas.length}: gerando imagem…`);
     await gerarImagem(cena.prompt, imagem);
     console.log(`  voz (${cena.voz})…`);
-    for (let t = 1; t <= 3; t += 1) { try { await gerarVoz(cena.fala, cena.voz, audio); break; } catch (e) { if (t === 3) throw e; console.log(`  voz limitada — pausa ${t * 10}s…`); await new Promise((r) => setTimeout(r, t * 10000)); } }
+    for (let t = 1; t <= 3; t += 1) {
+      try {
+        await gerarVoz(cena.fala, cena.voz, audio);
+        break;
+      } catch (e) {
+        if (t === 3) { gerarVozWindows(cena.fala, audio.replace('.mp3', '.wav')); break; }
+        console.log(`  voz limitada — pausa ${t * 10}s…`);
+        await new Promise((r) => setTimeout(r, t * 10000));
+      }
+    }
     const duracao = duracaoSegundos(audio);
     console.log(`  montando (${duracao.toFixed(1)}s)…`);
     // Zoom lento (Ken Burns) sobre a imagem com a voz por cima.
