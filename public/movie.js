@@ -496,6 +496,50 @@ function aplicarNoVideo(action, positionSec) {
     toast('Toque no vídeo para autorizar a reprodução com som.', 'info');
   });
 }
+// ---- v1.2: PiP — vídeo flutuante durante a conversa --------------------------
+
+/** Move o vídeo para um mini-player fixo (canto inferior direito). */
+function montarMini(video) {
+  const doc = globalThis.document;
+  let mini = doc.getElementById('filme-mini');
+  if (!mini) {
+    mini = doc.createElement('div');
+    mini.id = 'filme-mini';
+    mini.className = 'filme-mini';
+    const voltar = doc.createElement('button');
+    voltar.type = 'button';
+    voltar.className = 'btn btn-sm';
+    voltar.textContent = '⛶ Voltar ao filme';
+    voltar.addEventListener('click', () => {
+      if (sessao?.refs) MV.montarVistaPrincipal(sessao.refs.raiz);
+      devolverVideoAoPalco();
+      mini.remove();
+    });
+    mini.appendChild(voltar);
+    doc.body.appendChild(mini);
+  }
+  mini.appendChild(video); // mover o MESMO elemento — a reprodução não reinicia
+  video.play?.()?.catch?.(() => {});
+}
+
+/** Devolve o vídeo ao palco da sessão (chamado ao reabrir a vista). */
+function devolverVideoAoPalco() {
+  const palco = sessao?.refs?.palco;
+  const video = sessao?.refs?.video;
+  if (!palco || !video) return;
+  if (video.parentElement !== palco) {
+    const aviso = palco.querySelector('.filme-nota-host'); // manter a nota do stream
+    palco.insertBefore(video, aviso ?? null);
+    video.play?.()?.catch?.(() => {});
+  }
+  document.getElementById('filme-mini')?.remove();
+}
+
+/** Remove o mini-player (fim da sessão). */
+function removerMini() {
+  globalThis.document.getElementById('filme-mini')?.remove();
+}
+
 // ---- v1.2: SESSÃO ÚNICA — consultar estado e ENTRAR na sessão ativa ---------
 
 let aguardandoEstado = null; // callback one-shot do consultarEstado
@@ -689,6 +733,9 @@ function montarVista() {
   const zonaTitulo = nodo('div', 'filme-ident');
   zonaTitulo.append(nodo('h2', 'filme-titulo', sessao.titulo), ficha);
   const verConversa = botao('Ver conversa', 'btn btn-ghost btn-sm', () => {
+    // v1.2 — PiP: o vídeo (se existir) move-se para um mini-player flutuante
+    // e CONTINUA a tocar enquanto a conversa está aberta; o chip devolve-o.
+    if (video) montarMini(video);
     const ativa = MV?.obterEstado?.()?.ativa;
     if (ativa) MV.abrirConversa(ativa);
     else toast('Abra uma conversa na barra lateral para conversar.', 'info');
@@ -734,9 +781,13 @@ function montarVista() {
   const raiz = doc.createElement('div');
   raiz.className = 'filme';
   raiz.append(cabeca, palco, controles, membros);
-  sessao.refs = { raiz, video, tempo, barra, membros };
+  sessao.refs = { raiz, video, tempo, barra, membros, palco };
   MV.montarVistaPrincipal(raiz);
-  sessao.chip = mostrarChip('🎬 Sessão de filme', () => MV.montarVistaPrincipal(sessao.refs.raiz));
+  devolverVideoAoPalco();
+  sessao.chip = mostrarChip('🎬 Sessão de filme', () => {
+    MV.montarVistaPrincipal(sessao.refs.raiz);
+    devolverVideoAoPalco(); // v1.2: o vídeo volta ao palco (PiP → cheio)
+  });
   atualizarMembros();
   iniciarDrift();
   // Um controlo recebido enquanto a vista não existia aplica-se logo ao entrar.
@@ -863,6 +914,7 @@ function terminarSessao(motivo = null, avisar = true) {
   if (!atual) return;
   sessao = null;
   pararDrift();
+  removerMini(); // PiP fora (v1.2)
   // Pausa o vídeo ANTES de descartar a vista: sem isto, o elemento destacado
   // continuava a tocar (e a disparar timeupdate) depois do fim da sessão.
   try { atual.refs?.video?.pause(); } catch { /* já parado */ }

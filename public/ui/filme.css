@@ -254,3 +254,16 @@
   }
   @keyframes gaveta-subir { from { transform: translateY(30px); opacity: 0.4; } to { transform: none; opacity: 1; } }
 }
+
+/* PiP (v1.2): mini-player flutuante durante a conversa */
+.filme-mini {
+  position: fixed; right: 14px; bottom: 14px; z-index: 65;
+  width: min(260px, 42vw);
+  background: #17181c; border: 1px solid #2a2d33; border-radius: 10px;
+  padding: 6px; display: flex; flex-direction: column; gap: 6px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+  animation: pip-entrada 0.18s ease;
+}
+@keyframes pip-entrada { from { transform: translateY(12px); opacity: 0; } to { transform: none; opacity: 1; } }
+.filme-mini video { width: 100%; aspect-ratio: 16 / 9; border-radius: 6px; background: #000; }
+.filme-mini .btn { align-self: flex-end; }
