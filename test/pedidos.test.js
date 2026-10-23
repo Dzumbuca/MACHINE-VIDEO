@@ -12,7 +12,8 @@ const { createStoreMemory } = require('../src/store-memory');
 
 async function arranque() {
   const store = createStoreMemory();
-  const { http } = createServer({ store });
+  const { http, attach } = createServer({ store });
+  attach(); // monta o hub WebSocket (necessário para o push em tempo real)
   await new Promise((resolver) => http.listen(0, '127.0.0.1', resolver));
   const base = `http://127.0.0.1:${http.address().port}`;
   return { store, base, fechar: async () => { http.closeAllConnections?.(); await new Promise((r) => http.close(r)); } };
@@ -110,6 +111,36 @@ test('terceiro alheio → E_FORBIDDEN (403); pedido aceite → E_DUP (409)', asy
       body: JSON.stringify({ requestId: rid }),
     });
     assert.equal((await acao(app.base, b.token, rid)).status, 409);
+  } finally {
+    await app.fechar();
+  }
+});
+
+// --- v1.1: PEDIDOS EM TEMPO REAL (push por WS, sem atualizar a página) --------
+
+const { WebSocket } = require('ws');
+
+test('pedido de amizade chega EM TEMPO REAL pelo WS — sem atualizar', async () => {
+  const app = await arranque();
+  try {
+    const a = await registarEEntrar(app.base, 'rt_ana');
+    const b = await registarEEntrar(app.base, 'rt_bruno');
+
+    // Bruno abre o app (WS autenticado).
+    const ws = new WebSocket(app.base.replace('http', 'ws'));
+    await new Promise((resolver, rejeitar) => { ws.once('open', resolver); ws.once('error', rejeitar); });
+    const mensagens = [];
+    ws.on('message', (dados) => mensagens.push(JSON.parse(dados.toString())));
+    ws.send(JSON.stringify({ type: 'auth', token: b.token }));
+    await new Promise((r) => setTimeout(r, 300)); // auth_ok
+
+    // Ana pede amizade POR HTTP — bruno tem de receber PELO WS, na hora.
+    await pedidoAmizade(app.base, a.token, 'rt_bruno');
+    await new Promise((r) => setTimeout(r, 800));
+
+    const chegou = mensagens.some((m) => m.type === 'friend_request' && m.from?.username === 'rt_ana');
+    assert.ok(chegou, 'o envelope friend_request devia chegar pelo WS');
+    ws.close();
   } finally {
     await app.fechar();
   }

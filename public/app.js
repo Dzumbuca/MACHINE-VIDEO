@@ -178,8 +178,25 @@ function ligarWs() {
     if (refsConversa) vistas.definirEstadoWs(refsConversa, s);
     if (s === 'dead') validarSessaoOuAvisar();
   });
+  ws.on('friend_request', chegouPedidoAmizade);
+  ws.on('friend_accepted', amizadeAceitaRemota);
+  ws.on('friend_removed', amizadeRemovidaRemota);
   iniciarChamadas(); iniciarSessoesFilme(); // Task 10: registam handlers no ws novo
   ws.connect(lerToken());
+}
+
+// v1.1 — ciclos de amizade em TEMPO REAL: os envelopes do hub (e da ponte 🌉)
+// chegam sem atualizar a página; a lista e o badge refrescam sozinhos.
+async function chegouPedidoAmizade(envelope) {
+  vistas.toast(`${envelope.from?.username ?? 'Alguém'} pediu-te amizade!`, 'info');
+  await carregarAmigos();
+}
+async function amizadeAceitaRemota(envelope) {
+  vistas.toast(`${envelope.by?.username ?? 'Alguém'} aceitou o teu pedido de amizade!`, 'ok');
+  await carregarAmigos();
+}
+async function amizadeRemovidaRemota() {
+  await carregarAmigos(); // recusa/cancelamento — atualiza em silêncio
 }
 
 // 'dead' valida por API: 401 → sair; 200 → servidor a acordar, o WS persiste.

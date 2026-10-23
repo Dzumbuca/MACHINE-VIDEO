@@ -9,7 +9,14 @@ const { criarHub } = require('./ws');
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 
 function createServer({ store } = {}) {
-  const handle = createRouter({ store, publicDir: PUBLIC_DIR });
+  // v1.1: as rotas HTTP notificam por WS (pedidos de amizade). Ligação TARDIA:
+  // o hub só existe em attach() — o indireto é preenchido então.
+  let notificarWs = () => {};
+  const handle = createRouter({
+    store,
+    publicDir: PUBLIC_DIR,
+    wsNotificar: (...args) => notificarWs(...args),
+  });
   const server = http.createServer(handle);
 
   // Liga um servidor WebSocket ao HTTP existente e monta o hub (auth por
@@ -40,6 +47,7 @@ function createServer({ store } = {}) {
     // attach() pode ser chamado várias vezes nos testes — guardamos o parar
     // na própria instância wss para o require.main o alcançar.
     if (hub.rele) wss.rele = hub.rele;
+    notificarWs = hub.enviarPara; // v1.1: rotas HTTP já podem notificar por WS
     return wss;
   }
 

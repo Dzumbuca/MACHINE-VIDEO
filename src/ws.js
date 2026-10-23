@@ -234,7 +234,9 @@ function criarHub({ store, wss, authTimeoutMs = TEMPO_LIMITE_AUTH_MS_PADRAO, rel
   // Erros do próprio servidor WebSocket (upgrade, etc.) não derrubam o processo.
   wss.on('error', () => {});
 
-  return { rele }; // o encerramento gracioso (server.js) usa rele.parar()
+  // v1.1: as rotas HTTP (pedidos de amizade) notificam em tempo real através
+  // desta função do hub — e a ponte 🌉 leva as notificações ao outro servidor.
+  return { rele, enviarPara };
 }
 
 module.exports = { criarHub };

@@ -25,9 +25,9 @@ function sendJson(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
-function createRouter({ store, publicDir }) {
+function createRouter({ store, publicDir, wsNotificar = null }) {
   const auth = createAuthHandlers({ store });
-  const friends = createFriendsHandlers({ store });
+  const friends = createFriendsHandlers({ store, notificar: wsNotificar });
   const chat = createChatHandlers({ store });
   const google = createGoogleHandlers({ store });
 

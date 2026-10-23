@@ -254,6 +254,7 @@ function createStoreMemory() {
       throw new StoreError('E_DUP', 'Pedido de amizade já processado');
     }
     friendRequestsById.delete(requestId);
+    return { ...pedido }; // snapshot para notificar a outra parte (v1.1)
   }
 
   function listFriends(userId) {

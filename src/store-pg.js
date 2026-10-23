@@ -315,6 +315,7 @@ async function createStorePg(connectionString, { reset = false, ...opcoesPool } 
         throw new StoreError('E_DUP', 'Pedido de amizade já processado');
       }
       await client.query('DELETE FROM friend_requests WHERE id = $1', [requestId]);
+      return linhaPedido(pedido); // snapshot para notificar a outra parte (v1.1)
     });
   }
 

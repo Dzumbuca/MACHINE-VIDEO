@@ -55,11 +55,12 @@ function traduzErroStore(err) {
   falha(status, err.message);
 }
 
-function createFriendsHandlers({ store }) {
+function createFriendsHandlers({ store, notificar = null }) {
+  // notificar(userId, envelope): push em tempo real pelo hub WS (v1.1) —
+  // pedidos/aceites/recusas chegam SEM atualizar a página, e a ponte 🌉
+  // retransmite para o outro servidor. Fire-and-forget: nunca lança.
+
   // Descoberta de amigos (v1.1): o contacto pode ser nome de utilizador,
-  // email ou telefone — tentamos nesta ordem. PERFIS PRIVADOS não aparecem
-  // por nome (invisíveis na busca de username); só quem tem o seu EMAIL ou
-  // TELEFONE os encontra. O telefone é comparado normalizado (só dígitos e +).
   async function encontrarAlvo(contacto) {
     if (typeof contacto !== 'string' || contacto.trim() === '') {
       falha(400, 'Indica o amigo: nome de utilizador, email ou telefone');
@@ -84,17 +85,29 @@ function createFriendsHandlers({ store }) {
     } catch (err) {
       traduzErroStore(err);
     }
+    // v1.1: o destinatário recebe o pedido EM TEMPO REAL (sem atualizar).
+    notificar?.(alvo.id, {
+      type: 'friend_request',
+      requestId: pedido.id,
+      from: { id: eu.id, username: eu.username },
+    });
     return { status: 201, body: { requestId: pedido.id } };
   }
 
   async function aceitarAmizade(req) {
     const { user: eu } = await exigirSessao(req, store);
     const corpo = await lerCorpoJson(req);
+    let aceito = null;
     try {
-      await store.acceptFriendRequest(corpo.requestId, eu.id);
+      aceito = await store.acceptFriendRequest(corpo.requestId, eu.id);
     } catch (err) {
       traduzErroStore(err);
     }
+    // v1.1: o REMETENTE fica a saber em tempo real que foi aceite.
+    notificar?.(aceito.fromId, {
+      type: 'friend_accepted',
+      by: { id: eu.id, username: eu.username },
+    });
     return { status: 200, body: { ok: true } };
   }
 
@@ -103,10 +116,16 @@ function createFriendsHandlers({ store }) {
   async function recusarAmizade(req) {
     const { user: eu } = await exigirSessao(req, store);
     const corpo = await lerCorpoJson(req);
+    let removido = null;
     try {
-      await store.removerPedido(corpo.requestId, eu.id);
+      removido = await store.removerPedido(corpo.requestId, eu.id);
     } catch (err) {
       traduzErroStore(err);
+    }
+    // v1.1: a OUTRA parte fica a saber em tempo real (lista atualiza sozinha).
+    if (removido) {
+      const outro = removido.fromId === eu.id ? removido.toId : removido.fromId;
+      notificar?.(outro, { type: 'friend_removed', by: { id: eu.id, username: eu.username } });
     }
     return { status: 200, body: { ok: true } };
   }
