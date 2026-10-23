@@ -35,6 +35,7 @@ export const CATALOGO = [
   { titulo: 'Beverly Hillbillies — "Granny\'s Garden"', ano: 1962, categoria: 'Séries', descricao: 'A avó e a sua horta em Beverly Hills', url: 'https://archive.org/download/The_Beverly_Hillbillies/GRANNYS_GARDEN_512kb.mp4' },
   { titulo: 'Bonanza — S02E07', ano: 1960, categoria: 'Séries', descricao: 'Os Cartwright do rancho Ponderosa (western clássico)', url: 'https://archive.org/download/Bonanza_pd/BonanzaS02e07.mp4' },
   { titulo: 'Flash Gordon — Cap. 1', ano: 1940, categoria: 'Séries', descricao: 'Serial espacial "Conquers the Universe" — capítulo de abertura', url: 'https://archive.org/download/flash_gordon1/flash_gordon_ep01_512kb.mp4' },
+  { titulo: 'Flash Gordon — Cap. 12 (final)', ano: 1940, categoria: 'Séries', descricao: 'O desfecho do serial — 20 minutos de suspense', url: 'https://archive.org/download/flash_gordon12/chapter12_512kb.mp4' },
   // --- 🕵️ Suspense e ação ---
   { titulo: 'Dressed to Kill', ano: 1945, categoria: 'Suspense', descricao: 'Sherlock Holmes e as notas musicais roubadas', url: 'https://archive.org/download/dressed_to_kill/dressed_to_kill_512kb.mp4' },
   { titulo: 'The Fast and the Furious', ano: 1954, categoria: 'Suspense', descricao: 'Fuga de carro em corrida no México (original!)', url: 'https://archive.org/download/TheFastandtheFuriousJohnIreland1954goofyrip/TheFastandtheFuriousJohnIreland1954goofyrip_512kb.mp4' },
