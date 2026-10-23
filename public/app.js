@@ -9,6 +9,7 @@ import { WsClient } from './ws.js';
 import { montarAuth, reporAuth } from './ui/auth.js';
 import * as vistas from './ui/views.js';
 import * as catalogoUi from './ui/catalogo.js';
+import * as gaveta from './ui/gaveta-amigos.js';
 import { montarPlayerSolo } from './ui/assistir.js';
 import { iniciarChamadas, abrirModal } from './call.js';
 import { iniciarSessoesFilme } from './movie.js';
@@ -44,6 +45,7 @@ function iniciar() {
   $('tab-conversas').addEventListener('click', () => mudarAba('conversas'));
   $('tab-amigos').addEventListener('click', () => mudarAba('amigos'));
   $('tab-filmes').addEventListener('click', () => catalogoUi.abrirCatalogo());
+  $('fab-amigos').addEventListener('click', () => gaveta.abrirGaveta());
   $('btn-sair').addEventListener('click', terminarSessao);
   $('form-amigo').addEventListener('submit', adicionarAmigo);
   $('form-telefone').addEventListener('submit', guardarTelefone);
@@ -116,6 +118,7 @@ function mostrarAuth() {
   $('app').hidden = true;
   $('auth').hidden = false;
   $('app').classList.remove('chat-open');
+  $('fab-amigos').hidden = true; // FAB some ao sair
   reporAuth();
 }
 
@@ -124,6 +127,7 @@ function entrarAplicacao(utilizador) {
   estado.utilizador = utilizador;
   $('auth').hidden = true;
   $('app').hidden = false;
+  $('fab-amigos').hidden = false; // FAB 👥 (gaveta de amigos) visível logado
   $('user-nome').textContent = utilizador.username;
   $('user-avatar').textContent = vistas.inicialDe(utilizador.username);
 
@@ -635,6 +639,10 @@ window.MV = {
   fecharVista() {
     if (estado.ativa) abrirConversa(estado.ativa);
     else fecharConversa();
+  },
+  /** v1.2: abre a Home do catálogo em MODO CONVITE para um amigo da gaveta. */
+  abrirCatalogoComConvite(friendId, friendNome) {
+    catalogoUi.abrirCatalogo({ id: friendId, nome: friendNome });
   },
   /** Catálogo (v1.1): ver um filme SOZINHO, sem sessão — player individual. */
   verSozinho(item) {

@@ -79,11 +79,12 @@ export function seletorCatalogo(aoEscolher) {
 }
 
 /**
- * Home do catálogo: FILTROS por categoria + grelha de cartões. Cada cartão
- * tem "▶ Ver sozinho" e "👥 Chamar amigos" (cria sessão sincronizada na
- * conversa ativa). Montada via MV.montarVistaPrincipal (ecrã cheio telemóvel).
+ * Home do catálogo: FILTROS + PESQUISA + grelha Netflix. Cada cartão tem
+ * "▶ Ver" e "👥 Amigos" (sessão sincronizada). Em MODO CONVITE (v1.2 — vindo
+ * da gaveta de amigos), os cartões criam a sessão já convidando esse amigo,
+ * sem conversa tradicional. Montada via MV.montarVistaPrincipal.
  */
-export function abrirCatalogo() {
+export function abrirCatalogo(modoConvite = null) {
   const MV = globalThis.window?.MV;
   const doc = globalThis.document;
   if (!MV || !doc) return;
@@ -105,10 +106,17 @@ export function abrirCatalogo() {
   const cabeca = nodo('header', 'filme-head');
   const zonaTitulo = nodo('div', 'filme-ident');
   zonaTitulo.append(
-    nodo('h2', 'filme-titulo', '🎬 Catálogo de filmes'),
-    nodo('p', 'filme-ficha', 'Grátis e legal (domínio público + Creative Commons) — escolhe e vê sozinho ou com amigos'),
+    nodo('h2', 'filme-titulo', modoConvite ? `🎬 Convidar ${modoConvite.nome} para ver…` : '🎬 Catálogo de filmes'),
+    nodo('p', 'filme-ficha', modoConvite ? 'Escolhe o filme — a sessão nasce já com o convite para o teu amigo' : 'Grátis e legal (domínio público + Creative Commons)'),
   );
   cabeca.append(zonaTitulo, voltar);
+
+  // Pesquisa (v1.2): filtra por título/descrição ao escrever.
+  const busca = Object.assign(doc.createElement('input'), {
+    className: 'input', type: 'search', maxLength: 40,
+    placeholder: 'Pesquisar filme…', 'aria-label': 'Pesquisar filme',
+  });
+  let termoBusca = '';
 
   // Filtros por categoria: chips "Todos" + uma por categoria (v1.1).
   let categoriaAtiva = null; // null = Todos
@@ -136,7 +144,11 @@ export function abrirCatalogo() {
     grelha.replaceChildren();
     for (const categoria of ORDEM_CATEGORIAS) {
       if (categoriaAtiva && categoriaAtiva !== categoria) continue;
-      const itens = CATALOGO.filter((i) => i.categoria === categoria);
+      const itens = CATALOGO.filter((i) => i.categoria === categoria).filter((i) => {
+        if (!termoBusca) return true;
+        const palheiro = `${i.titulo} ${i.descricao}`.toLowerCase();
+        return palheiro.includes(termoBusca);
+      });
       if (itens.length === 0) continue;
       grelha.appendChild(nodo('h3', 'catalogo-categoria', `${categoria} (${itens.length})`));
       for (const item of itens) {
@@ -160,10 +172,16 @@ export function abrirCatalogo() {
           nodo('p', 'catalogo-desc', item.descricao),
         );
         const acoes = nodo('div', 'catalogo-acoes');
-        acoes.append(
-          botao('▶ Ver', 'btn btn-primary btn-sm', () => MV.verSozinho?.(item)),
-          botao('👥 Amigos', 'btn btn-sm', () => MV.criarSessaoDoCatalogo?.(item)),
-        );
+        if (modoConvite) {
+          // Modo convite (v1.2): o cartão cria a sessão JÁ convidando o amigo.
+          acoes.append(botao('🎬 Convidar', 'btn btn-primary btn-sm', () =>
+            MV.criarSessaoDoCatalogo?.(item, [modoConvite.id])));
+        } else {
+          acoes.append(
+            botao('▶ Ver', 'btn btn-primary btn-sm', () => MV.verSozinho?.(item)),
+            botao('👥 Amigos', 'btn btn-sm', () => MV.criarSessaoDoCatalogo?.(item)),
+          );
+        }
         corpo.append(info, acoes);
         cartao.appendChild(corpo);
         grelha.appendChild(cartao);
@@ -176,6 +194,6 @@ export function abrirCatalogo() {
 
   const raiz = doc.createElement('div');
   raiz.className = 'catalogo';
-  raiz.append(cabeca, filtros, grelha);
+  raiz.append(cabeca, busca, filtros, grelha);
   MV.montarVistaPrincipal(raiz);
 }

@@ -94,7 +94,8 @@ export function iniciarSessoesFilme() {
     ['session_active', aoSessionActive], ['session_state', aoSessionState], // v1.2
   ]) soltarHandlers.push(ws.on(tipo, fn));
   MV.criarSessaoFilme = iniciarDaConversa;
-  MV.criarSessaoDoCatalogo = iniciarDoCatalogo; // v1.1: Home do catálogo
+  MV.criarSessaoDoCatalogo = (item, convidadosFixos = null) => iniciarDoCatalogo(item, convidadosFixos);
+  MV.convidarAmigo = convidarAmigo; // v1.2: gaveta de amigos
   MV.aoSair?.(() => { if (sessao) terminarSessao(); });
 }
 
@@ -102,11 +103,15 @@ export function iniciarSessoesFilme() {
  * Catálogo (v1.1): cria uma sessão a partir de um filme escolhido na Home.
  * Usa a conversa ATIVA para os convidados; exige uma conversa aberta.
  */
-export function iniciarDoCatalogo(item) {
+export function iniciarDoCatalogo(item, convidadosFixos = null) {
   if (sessao) return toast('Já está numa sessão de filme — saia dela primeiro.', 'erro');
   // v1.2: consulta o estado — se já houver sessão ativa, ENTRA nela.
   consultarEstado((ativa) => {
     if (ativa) return modalEntrarSessaoAtiva(ativa);
+    // Convidados FIXOS (gaveta de amigos): não precisa de conversa aberta.
+    if (convidadosFixos && convidadosFixos.length > 0) {
+      return abrirModalAnfitriao(null, convidadosFixos, { url: item.url, titulo: item.titulo });
+    }
     const estado = MV?.obterEstado?.();
     const conv = (estado?.conversas ?? []).find((c) => c.id === estado?.ativa);
     if (!conv) return toast('Abre uma conversa primeiro (Conversas → escolhe o amigo) e volta ao catálogo.', 'info');
@@ -114,6 +119,24 @@ export function iniciarDoCatalogo(item) {
     if (convidados.length === 0) return toast('Não há ninguém para convidar nesta conversa.', 'erro');
     abrirModalAnfitriao(conv, convidados, { url: item.url, titulo: item.titulo });
   });
+}
+
+/**
+ * Gaveta de amigos (v1.2): o que faz o 🎬 depende do momento.
+ *   - Sessão ATIVA e sou anfitrião → convite tardio (chega ao amigo na hora).
+ *   - Sessão ATIVA e sou convidado → aviso (só o anfitrião convida).
+ *   - SEM sessão → abre o catálogo em modo convite (escolhe o filme e cria
+ *     a sessão já convidando esse amigo, sem conversa tradicional).
+ */
+function convidarAmigo(friendId, friendNome) {
+  if (sessao) {
+    if (sessao.papel !== 'anfitriao') {
+      return toast('Só o anfitrião pode convidar para a sessão em curso.', 'info');
+    }
+    ws?.send({ type: 'session_invite_late', sessionId: sessao.id, toUserId: friendId });
+    return toast(`Convite enviado a ${friendNome ?? 'amigo'}!`, 'ok');
+  }
+  MV?.abrirCatalogoComConvite?.(friendId, friendNome);
 }
 
 // ---- utilitários -------------------------------------------------------------------
@@ -290,7 +313,7 @@ function abrirModalAnfitriao(conv, convidados, prefilhe = null) {
       if (!urlMedida) return;
       sessao = novaSessao({
         papel: 'anfitriao', id: null, titulo: campoTitulo.value.trim() || urlMedida.nome,
-        fileName: urlMedida.nome, durationSec: urlMedida.duracaoSec, convId: conv.id,
+        fileName: urlMedida.nome, durationSec: urlMedida.duracaoSec, convId: conv?.id ?? null,
         ficheiro: null, movieUrl: campoLink.value.trim(), fileMatches: true,
       });
       modal.fechar();
@@ -307,7 +330,7 @@ function abrirModalAnfitriao(conv, convidados, prefilhe = null) {
     if (!medido) return;
     sessao = novaSessao({
       papel: 'anfitriao', id: null, titulo: campoTitulo.value.trim() || medido.nome,
-      fileName: medido.nome, durationSec: medido.duracaoSec, convId: conv.id,
+      fileName: medido.nome, durationSec: medido.duracaoSec, convId: conv?.id ?? null,
       ficheiro: medido.file, fileMatches: true,
     });
     modal.fechar();
