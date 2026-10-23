@@ -355,3 +355,40 @@ ul {
   font-size: 0.8rem;
 }
 
+
+/* ---- v1.2 P5: unificação visual — foco, transições, scrollbars, motion ---- */
+
+/* Foco visível e consistente (teclado/acessibilidade) */
+:focus-visible {
+  outline: 2px solid var(--accent, #ff7a1a);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Botões: transição única e hover subtil em toda a app */
+.btn, .btn-sm, .side-tab, .auth-tab, .catalogo-filtro, .icon-btn {
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease,
+    transform 0.12s ease, opacity 0.15s ease;
+}
+.btn:active, .btn-sm:active { transform: scale(0.97); }
+
+/* Scrollbars discretas e escuras (Webkit + Firefox) */
+* { scrollbar-width: thin; scrollbar-color: #2a2d33 transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { background: #2a2d33; border-radius: 4px; }
+*::-webkit-scrollbar-track { background: transparent; }
+
+/* Raios coerentes nos componentes-chave */
+.input, select.input, .modal-card, .catalogo-cartao, .pedido, .gaveta-linha { border-radius: 10px; }
+
+/* Estados vazios mais cuidados */
+.vazio-lista, .gaveta-vazio, .pedidos-fora { text-align: center; padding: 10px; }
+
+/* Movimento reduzido: a app respeita a preferência do sistema */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
