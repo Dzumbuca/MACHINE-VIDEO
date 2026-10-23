@@ -10,7 +10,7 @@ import { montarAuth, reporAuth } from './ui/auth.js';
 import * as vistas from './ui/views.js';
 import * as catalogoUi from './ui/catalogo.js';
 import { montarPlayerSolo } from './ui/assistir.js';
-import { iniciarChamadas } from './call.js';
+import { iniciarChamadas, abrirModal } from './call.js';
 import { iniciarSessoesFilme } from './movie.js';
 
 const $ = (id) => document.getElementById(id);
@@ -127,9 +127,57 @@ function entrarAplicacao(utilizador) {
   $('user-nome').textContent = utilizador.username;
   $('user-avatar').textContent = vistas.inicialDe(utilizador.username);
 
+  // v1.1: conta Google recém-criada → o utilizador ESCOLHE o username antes
+  // de usar o app (o do email era provisório).
+  if (utilizador.usernameProvisorio) pedirUsername(utilizador);
+
   ligarWs();
   vistas.mostrarVazio($('main'), { temAmigos: false });
   carregarTudo();
+}
+
+// Onboarding do username (v1.1): modal bloqueante com a sugestão do email
+// pré-preenchida; confirmação grava via /api/me/username.
+function pedirUsername(utilizador) {
+  const doc = document;
+  const input = Object.assign(doc.createElement('input'), {
+    className: 'input', maxLength: 20, value: utilizador.username,
+  });
+  input.setAttribute('aria-label', 'Nome de utilizador');
+  const erro = doc.createElement('p');
+  erro.className = 'form-erro';
+  erro.hidden = true;
+  const rotulo = doc.createElement('label');
+  rotulo.className = 'label';
+  rotulo.append('O teu nome de utilizador (3–20: letras, números ou _) — é como os amigos te encontram:', input);
+  const nota = doc.createElement('p');
+  nota.className = 'form-nota';
+  nota.textContent = 'Sugestão automática a partir do teu email — podes mudar à vontade.';
+  const confirmar = doc.createElement('button');
+  confirmar.type = 'button';
+  confirmar.className = 'btn btn-primary';
+  confirmar.textContent = 'Confirmar';
+  const modal = abrirModal({
+    titulo: 'Escolhe o teu nome de utilizador',
+    corpo: [rotulo, erro, nota],
+    acoes: [confirmar],
+    bloqFora: true,
+  });
+  confirmar.addEventListener('click', async () => {
+    confirmar.disabled = true;
+    try {
+      const r = await api.escolherUsername(input.value.trim());
+      estado.utilizador = r.user;
+      $('user-nome').textContent = r.user.username;
+      $('user-avatar').textContent = vistas.inicialDe(r.user.username);
+      modal.fechar();
+      vistas.toast(`Bem-vindo, ${r.user.username}!`, 'ok');
+    } catch (e) {
+      erro.hidden = false;
+      erro.textContent = e.erro || 'Não foi possível guardar';
+      confirmar.disabled = false;
+    }
+  });
 }
 
 function limparEstado() {

@@ -71,6 +71,8 @@ function linhaUser(row) {
     googleId: row.google_id,
     // Perfil público/privado (v1.1) — o Postgres já devolve 'publico' por defeito.
     visibilidade: row.visibilidade,
+    // Username provisório (v1.1) — true só em contas Google recém-criadas.
+    usernameProvisorio: row.username_provisorio,
     createdAt: row.created_at.toISOString(),
   };
 }

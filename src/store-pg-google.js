@@ -80,11 +80,30 @@ function criarMetodosGooglePg(pool, util = {}) {
   async function createUserWithGoogle({ username, email, googleId }) {
     try {
       const r = await pool.query(
-        `INSERT INTO users (id, username, pass_hash, sec_q, sec_a, email, google_id, phone)
-         VALUES ($1, $2, NULL, NULL, NULL, $3, $4, NULL)
+        `INSERT INTO users (id, username, pass_hash, sec_q, sec_a, email, google_id, phone, username_provisorio)
+         VALUES ($1, $2, NULL, NULL, NULL, $3, $4, NULL, true)
          RETURNING *`,
         [novoId(), username, email, googleId],
       );
+      return linhaUser(r.rows[0]);
+    } catch (erro) {
+      erroDuplicado(erro, 'Nome de utilizador já existe');
+    }
+  }
+
+  // v1.1 — escolher/alterar o username (contas Google com nome provisório).
+  // E_DUP se já existir; o chamador valida o formato.
+  async function setUsername(userId, novoUsername) {
+    try {
+      const r = await pool.query(
+        `UPDATE users SET username = $1, username_provisorio = false
+         WHERE id = $2
+         RETURNING *`,
+        [novoUsername, userId],
+      );
+      if (r.rows.length === 0) {
+        throw new StoreError('E_NOTFOUND', 'Utilizador não encontrado');
+      }
       return linhaUser(r.rows[0]);
     } catch (erro) {
       erroDuplicado(erro, 'Nome de utilizador já existe');
@@ -155,6 +174,7 @@ function criarMetodosGooglePg(pool, util = {}) {
     getUserByPhone,
     setPhone,
     setVisibilidade,
+    setUsername,
   };
 }
 

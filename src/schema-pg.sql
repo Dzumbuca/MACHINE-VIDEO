@@ -103,3 +103,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone
 -- v1.1 — perfis público/privado (aditivo, idempotente): 'publico' aparece em
 -- qualquer busca; 'privado' só é encontrado por email ou telefone.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS visibilidade TEXT NOT NULL DEFAULT 'publico';
+
+-- v1.1 — username provisório: contas criadas via Google recebem um username
+-- automático do email e DEVEM escolher o definitivo no primeiro arranque.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS username_provisorio BOOLEAN NOT NULL DEFAULT false;

@@ -181,6 +181,7 @@ function createAuthHandlers({ store }) {
     'GET /api/me': perfil,
     'POST /api/me/phone': guardarTelefone,
     'POST /api/me/visibilidade': guardarVisibilidade,
+    'POST /api/me/username': escolherUsername,
   };
 
   // Telefone do utilizador (v1.1 — descoberta de amigos). Vazio → remove.
@@ -203,6 +204,26 @@ function createAuthHandlers({ store }) {
     }
     await store.setVisibilidade(user.id, corpo.visibilidade);
     return { status: 200, body: { ok: true, visibilidade: corpo.visibilidade } };
+  }
+
+  // Escolher/alterar o username (v1.1): obrigatório para contas Google com
+  // nome provisório; o formato segue o mesmo regex do registo clássico.
+  async function escolherUsername(req) {
+    const { user } = await exigirSessao(req, store);
+    const corpo = await lerCorpoJson(req);
+    const username = typeof corpo.username === 'string' ? corpo.username.trim() : '';
+    if (!/^[A-Za-z0-9_]{3,20}$/.test(username)) {
+      falha(400, 'Nome de utilizador: 3–20 caracteres (letras, números ou _)');
+    }
+    try {
+      const atualizado = await store.setUsername(user.id, username);
+      return { status: 200, body: { ok: true, user: utilizadorPublico(atualizado) } };
+    } catch (err) {
+      if (err instanceof StoreError && err.code === 'E_DUP') {
+        falha(409, 'Esse nome de utilizador já existe — escolhe outro');
+      }
+      throw err;
+    }
   }
 
   /**

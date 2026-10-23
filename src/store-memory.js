@@ -100,17 +100,37 @@ function createStoreMemory() {
     const user = exigeUser(userId);
     user.googleId = googleId;
     user.email = email;
+    user.usernameProvisorio = false; // username já escolhido (conta antiga)
     return { ...user };
   }
 
-  // Cria utilizador via Google: sem senha nem pergunta de segurança.
+  // Cria utilizador via Google: sem senha nem pergunta de segurança. O
+  // username vem do email e fica PROVISÓRIO (o utilizador escolhe o seu no
+  // primeiro arranque — v1.1).
   function createUserWithGoogle({ username, email, googleId }) {
     const user = {
       id: novoId(), username, passHash: null, secQ: null, secA: null,
-      email, googleId, phone: null, visibilidade: 'publico', createdAt: agora(),
+      email, googleId, phone: null, visibilidade: 'publico',
+      usernameProvisorio: true, createdAt: agora(),
     };
     usersById.set(user.id, user);
     userIdByUsername.set(username, user.id);
+    return { ...user };
+  }
+
+  // v1.1 — escolher/alterar o username (contas Google com nome provisório).
+  // E_DUP se já existir; o chamador valida o formato.
+  function setUsername(userId, novoUsername) {
+    const user = exigeUser(userId);
+    if (userIdByUsername.has(novoUsername) && userIdByUsername.get(novoUsername) !== userId) {
+      throw new StoreError('E_DUP', 'Nome de utilizador já existe');
+    }
+    if (novoUsername !== user.username) {
+      userIdByUsername.delete(user.username);
+      userIdByUsername.set(novoUsername, user.id);
+      user.username = novoUsername;
+    }
+    user.usernameProvisorio = false;
     return { ...user };
   }
 
@@ -384,6 +404,8 @@ function createStoreMemory() {
     setPhone,
     // visibilidade (v1.1)
     setVisibilidade,
+    // username (v1.1)
+    setUsername,
     // sessões
     createSession,
     getUserByToken,

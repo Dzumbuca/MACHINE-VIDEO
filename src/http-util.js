@@ -74,6 +74,7 @@ function utilizadorPublico(user) {
     username: user.username,
     phone: user.phone ?? null,
     visibilidade: user.visibilidade ?? 'publico',
+    usernameProvisorio: Boolean(user.usernameProvisorio),
   };
 }
 
